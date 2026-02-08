@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>מדריך אינטראקטיבי</title>
+  <link rel="stylesheet" href="assets/styles.css"/>
+</head>
+<body>
+  <div class="container">
+
+    <div class="topbar">
+      <div class="brand">
+        <img id="museumLogo" src="assets/logo.png" alt="לוגו מוזיאון"/>
+        <div>
+          <div class="museum-name" id="museumName">מוזיאון</div>
+          <div class="small">מדריך שקט – מבוסס צ׳אט</div>
+        </div>
+      </div>
+      <a class="small" href="index.html">חזרה</a>
+    </div>
+
+    <div class="grid">
+      <div class="card">
+        <div class="hero">
+          <img id="heroImg" alt="תמונה של המיצג"/>
+        </div>
+        <div class="content">
+          <h1 class="h1" id="title"></h1>
+          <p class="h2" id="subtitle"></p>
+
+          
+
+          <div class="creator" id="creatorBox" style="display:none;">
+            <img id="creatorImg" alt="יוצר/ת"/>
+            <div>
+              <div style="font-weight:900;">יוצר/ת</div>
+              <div class="small" id="creatorText"></div>
+            </div>
+          </div>
+
+          <div class="tags" id="tags"></div>
+          
+          <div class="section-title">תיאור</div>
+          <div id="description"></div>
+
+          <div class="section-title" id="videoTitle" style="display:none;">וידאו</div>
+          <div id="videoBox" style="display:none; padding-bottom:14px;">
+            <div class="card" style="box-shadow:none;">
+              <div style="aspect-ratio:16/9;">
+                <iframe id="videoFrame" style="width:100%; height:100%; border:0;" allowfullscreen></iframe>
+              </div>
+            </div>
+          </div>
+
+          <div class="small">
+            המערכת עונה רק לפי מידע שהוזן מראש. אם אין מידע – תקבל/י תשובה “אין לי מספיק מידע על זה”.
+          </div>
+        </div>
+      </div>
+
+      <div class="card chat-wrap">
+        <div class="chat-header">
+          <div class="title">שאל/י את המדריך</div>
+          <button id="resetBtn" class="reset-btn">איפוס</button>
+        </div>
+
+        <div class="chat-log" id="chatLog"></div>
+
+        <div class="chat-input">
+          <textarea id="q" placeholder="כתוב/י שאלה..."></textarea>
+          <button id="sendBtn">שלח</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <script src="assets/app.js"></script>
+</body>
+</html>

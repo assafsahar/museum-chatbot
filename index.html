@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>מדריך אינטראקטיבי – מוזיאון</title>
+  <link rel="stylesheet" href="assets/styles.css"/>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="brand">
+        <img id="museumLogo" src="assets/logo.png" alt="לוגו מוזיאון"/>
+        <div>
+          <div class="museum-name" id="museumName">מוזיאון</div>
+          <div class="small">בחר/י מיצג לדוגמה</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="content">
+        <div class="section-title">מיצגים</div>
+        <div id="list"></div>
+        <div class="small" style="margin-top:12px;">
+          דוגמה לקישור QR: <b>exhibit.html?id=exhibit-01</b>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    (async () => {
+      const res = await fetch("assets/exhibits.json", { cache: "no-store" });
+      const data = await res.json();
+
+      document.getElementById("museumName").textContent = data.museum?.name || "מוזיאון";
+      document.getElementById("museumLogo").src = data.museum?.logo || "assets/logo.png";
+
+      const list = document.getElementById("list");
+      const exhibits = data.exhibits || {};
+
+      Object.entries(exhibits).forEach(([id, ex]) => {
+        const row = document.createElement("div");
+        row.style.padding = "10px 0";
+        row.style.borderBottom = "1px solid #e5e7eb";
+
+        const a = document.createElement("a");
+        a.href = `exhibit.html?id=${encodeURIComponent(id)}`;
+        a.style.textDecoration = "none";
+        a.innerHTML = `<b>${ex.title}</b><div class="small">${ex.subtitle || ""}</div>`;
+
+        row.appendChild(a);
+        list.appendChild(row);
+      });
+    })();
+  </script>
+</body>
+</html>
