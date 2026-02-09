@@ -49,9 +49,15 @@
   row.appendChild(bubble);
 
   els.chatLog.appendChild(row);
-  els.chatLog.scrollTop = els.chatLog.scrollHeight;
+  scrollChatLogToBottom();
 
   return row;
+}
+function scrollChatLogToBottom() {
+  if (!els.chatLog) return;
+  requestAnimationFrame(() => {
+    els.chatLog.scrollTop = els.chatLog.scrollHeight;
+  });
 }
 
   
@@ -211,7 +217,7 @@ function smoothScrollToY(targetY, durationMs = 520) {
 
     const bubble = pending?.querySelector(".bubble");
     if (bubble) bubble.textContent = answer;
-
+    scrollChatLogToBottom();
 
     })
 
@@ -344,6 +350,7 @@ function smoothScrollToY(targetY, durationMs = 520) {
     // replace typing bubble text
     const bubble = pending?.querySelector(".bubble");
     if (bubble) bubble.textContent = answer;
+    scrollChatLogToBottom();
 
 
   }

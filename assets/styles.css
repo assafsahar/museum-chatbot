@@ -260,3 +260,7 @@ a{ color:inherit; }
 }
 
 .bubble{ padding-right: 44px; }
+
+#chatLog{
+  padding-bottom: 12px;
+}
