@@ -135,6 +135,13 @@ function wireUI(){
     });
 
     const data = await resp.json();
+    console.log("CHAT DEBUG RESPONSE:", data);
+    console.log("CHAT DEBUG STATUS:", res.status);
+if (data.debug) {
+  addMsg("assistant", "DEBUG: " + JSON.stringify(data.debug, null, 2));
+}
+
+
 
     // Remove the last assistant message if it's the "thinking" one
     const chat = el("chatLog");
