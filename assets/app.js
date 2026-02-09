@@ -26,58 +26,199 @@
     chatLog: document.getElementById("chatLog"),
     q: document.getElementById("q"),
     sendBtn: document.getElementById("sendBtn"),
-    resetBtn: document.getElementById("resetBtn"),
+    micBtn: document.getElementById("micBtn"),
+    resetBtn: document.getElementById("resetBtn")
   };
 
+    // --- Text-to-Speech (play button per assistant message) ---
+
   function appendMessage(role, text) {
-    // role: "user" | "assistant"
-    const row = document.createElement("div");
-    row.className = `msg ${role}`;
+  // role: "user" | "assistant"
+  const row = document.createElement("div");
+  row.className = `msg ${role}`;
 
-    const label = document.createElement("div");
-    label.className = "msgLabel";
-    label.textContent = role === "user" ? "מבקר" : "מדריך";
+  const label = document.createElement("div");
+  label.className = "msgLabel";
+  label.textContent = role === "user" ? "מבקר" : "מדריך";
 
-    const bubble = document.createElement("div");
-    bubble.className = "bubble";
-    bubble.textContent = text;
+  const bubble = document.createElement("div");
+  bubble.className = "bubble";
+  bubble.textContent = text;
 
-    row.appendChild(label);
-    row.appendChild(bubble);
+  row.appendChild(label);
+  row.appendChild(bubble);
 
-    els.chatLog.appendChild(row);
-    els.chatLog.scrollTop = els.chatLog.scrollHeight;
+  els.chatLog.appendChild(row);
+  els.chatLog.scrollTop = els.chatLog.scrollHeight;
 
-    return row;
+  return row;
+}
+
+  
+function smoothScrollToY(targetY, durationMs = 520) {
+  const startY = window.scrollY || window.pageYOffset;
+  const deltaY = targetY - startY;
+
+  // If the distance is tiny, still animate a bit so it feels like movement
+  const minDistance = 120;
+  const effectiveDelta = Math.abs(deltaY) < minDistance
+    ? (deltaY >= 0 ? minDistance : -minDistance)
+    : deltaY;
+
+  const finalY = startY + effectiveDelta;
+  const startT = performance.now();
+
+  function easeInOutCubic(t) {
+    return t < 0.5
+      ? 4 * t * t * t
+      : 1 - Math.pow(-2 * t + 2, 3) / 2;
   }
 
-  function setTags(tags) {
+  function step(now) {
+    const t = Math.min(1, (now - startT) / durationMs);
+    const eased = easeInOutCubic(t);
+    window.scrollTo(0, startY + effectiveDelta * eased);
+    if (t < 1) requestAnimationFrame(step);
+  }
+
+  requestAnimationFrame(step);
+}
+
+  function scrollChatIntoViewIfMobile(withFlash = false) {
+  if (!window.matchMedia("(max-width: 900px)").matches) return;
+
+  const chatCard = document.querySelector(".chat-wrap");
+  if (!chatCard) return;
+
+  requestAnimationFrame(() => {
+    const rect = chatCard.getBoundingClientRect();
+
+    // Scroll target so chat card starts a bit below the top (nice padding)
+    const topPadding = 12;
+    const targetY = (window.scrollY || window.pageYOffset) + rect.top - topPadding;
+
+    smoothScrollToY(targetY, 560);
+
+    if (withFlash) {
+      chatCard.classList.remove("flash");
+      void chatCard.offsetWidth;
+      chatCard.classList.add("flash");
+      window.setTimeout(() => chatCard.classList.remove("flash"), 650);
+    }
+  });
+}
+
+  // --- Voice input (Speech-to-Text) ---
+  const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let recognition = null;
+  let isRecording = false;
+
+  function setupVoiceInput() {
+    if (!els.micBtn) return;
+
+    if (!SpeechRecognition) {
+      // Hide mic button if not supported (e.g. Safari iOS in many cases)
+      els.micBtn.style.display = "none";
+      return;
+    }
+
+    recognition = new SpeechRecognition();
+    recognition.lang = "he-IL";
+    recognition.interimResults = false;
+    recognition.maxAlternatives = 1;
+
+    recognition.onstart = () => {
+      isRecording = true;
+      els.micBtn.classList.add("recording");
+    };
+
+    recognition.onend = () => {
+      isRecording = false;
+      els.micBtn.classList.remove("recording");
+    };
+
+    recognition.onerror = () => {
+      isRecording = false;
+      els.micBtn.classList.remove("recording");
+      appendMessage("assistant", "לא הצלחתי לשמוע. נסה/י שוב.");
+    };
+
+    recognition.onresult = async (event) => {
+      const text = event.results?.[0]?.[0]?.transcript?.trim();
+      if (!text) return;
+
+      els.q.value = text;
+      await onSend(); // send exactly like typed text
+    };
+
+    els.micBtn.addEventListener("click", () => {
+      if (!recognition) return;
+
+      if (isRecording) {
+        recognition.stop();
+        return;
+      }
+
+      els.q.value = "";
+      recognition.start();
+    });
+  }
+
+
+  // --- Quick buttons -> guaranteed server fast paths (saves credits) ---
+  function tagToCommand(tag) {
+    const t = String(tag || "").trim();
+
+    if (t === "טכניקות") return "__FACT:טכניקות__";
+    if (t === "חומרים") return "__FACT:חומרים__";
+    if (t === "שנת יצירה") return "__FACT:שנת יצירה__";
+    if (t === "אוצר/ת") return "__FACT:אוצר/ת__";
+    if (t === "מי היוצר/ת") return "מי היוצר/ת";
+    if (t === "תקציר קצר") return "__SUMMARY__";
+
+    // fallback: if you keep legacy tags like "הקשר" / "תנועה" etc,
+    // we send a safe, generic question (may return "אין לי מספיק מידע" if not covered).
+    return `ספר/י בקצרה על "${t}" כפי שמתואר במידע על המיצג.`;
+  }
+
+  function setTags(exhibit) {
+    const tags = Array.isArray(exhibit?.tags) ? exhibit.tags : [];
     els.tags.innerHTML = "";
 
-    (tags || []).forEach((t) => {
+    // Only show buttons that we can answer reliably
+    const allowed = new Set(["תקציר קצר", "טכניקות", "חומרים", "שנת יצירה", "אוצר/ת", "מי היוצר/ת"]);
+    const filtered = tags.filter((t) => allowed.has(String(t).trim()));
+
+    // If exhibit doesn't define tags, fallback to a default set
+    const finalTags = filtered.length
+      ? filtered
+      : ["תקציר קצר", "טכניקות", "חומרים", "שנת יצירה", "מי היוצר/ת"];
+
+    finalTags.forEach((t) => {
       const btn = document.createElement("button");
       btn.type = "button";
       btn.className = "tagBtn";
       btn.textContent = t;
 
-      btn.addEventListener("click", () => {
-        els.q.value = `מה המשמעות של "${t}"?`;
-        onSend();
-      });
+      btn.addEventListener("click", async () => {
+    // Show as user-facing natural language
+    appendMessage("user", t);
+    scrollChatIntoViewIfMobile(false);
+
+
+    // Default: server path
+    const pending = appendMessage("assistant", "רגע…");
+    const { answer } = await ask(tagToCommand(t));
+
+    const bubble = pending?.querySelector(".bubble");
+    if (bubble) bubble.textContent = answer;
+
+
+    })
+
 
       els.tags.appendChild(btn);
     });
-
-    // Extra fixed button: "יוצר/ת"
-    const creatorBtn = document.createElement("button");
-    creatorBtn.type = "button";
-    creatorBtn.className = "tagBtn";
-    creatorBtn.textContent = "יוצר/ת";
-    creatorBtn.addEventListener("click", () => {
-      els.q.value = "ספר לי על היוצר/ת";
-      onSend();
-    });
-    els.tags.appendChild(creatorBtn);
   }
 
   function renderDescription(exhibit) {
@@ -97,13 +238,13 @@
     els.creatorBox.style.display = "flex";
     els.creatorText.textContent = exhibit.creatorName || "—";
 
-    if (hasCreatorImage) {
-      els.creatorImg.src = exhibit.creatorImage;
-      els.creatorImg.alt = exhibit.creatorName || "יוצר/ת";
-      els.creatorImg.style.display = "block";
-    } else {
-      els.creatorImg.style.display = "none";
-    }
+    const creatorImg = String(exhibit?.creatorImage || "").trim();
+    const fallbackImg = "assets/creator-placeholder.jpg";
+
+    els.creatorImg.src = creatorImg ? creatorImg : fallbackImg;
+    els.creatorImg.alt = exhibit.creatorName || "יוצר/ת";
+    els.creatorImg.style.display = "block";
+
   }
 
   function renderVideo(exhibit) {
@@ -129,7 +270,7 @@
     const data = await res.json();
 
     if (debugMode) {
-      console.log("CLIENT DEBUG RESPONSE:", data);
+      console.log("CLIENT DEBUG EXHIBITS:", data);
     }
 
     renderMuseum(data);
@@ -143,20 +284,25 @@
     els.title.textContent = exhibit.title || "";
     els.subtitle.textContent = exhibit.subtitle || "";
 
-    if (exhibit.heroImage) {
-      els.heroImg.src = exhibit.heroImage;
-      els.heroImg.alt = exhibit.title || "תמונה של המיצג";
+    const exhibitHero = (exhibit.heroImage || "").trim();
+    const exhibitionHero = (data?.museum?.exhibitionImage || "").trim();
+    const heroSrc = exhibitHero || exhibitionHero;
+
+    if (heroSrc) {
+        els.heroImg.src = heroSrc;
+        els.heroImg.alt = exhibit.title || "תמונה";
     }
 
+
     renderCreator(exhibit);
-    setTags(exhibit.tags || []);
+    setTags(exhibit); // changed: pass exhibit instead of tags array
     renderDescription(exhibit);
     renderVideo(exhibit);
 
-    // Initial greeting
+    // Initial greeting (aligned with available buttons)
     appendMessage(
       "assistant",
-      "שלום 🙂 אפשר לשאול אותי שאלות על המיצג. למשל: \"מה הטכניקה?\", \"מה החומרים?\", \"מי היוצר/ת?\""
+      "שלום 🙂 אפשר לשאול אותי שאלות על המיצג, או להשתמש בכפתורים למעלה לקבלת מידע מהיר."
     );
   }
 
@@ -168,7 +314,7 @@
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ exhibitId, question }),
+      body: JSON.stringify({ exhibitId, question })
     });
 
     const json = await res.json().catch(() => null);
@@ -189,6 +335,7 @@
 
     els.q.value = "";
     appendMessage("user", q);
+    scrollChatIntoViewIfMobile(false);
 
     // temporary "typing" bubble
     const pending = appendMessage("assistant", "רגע…");
@@ -198,13 +345,15 @@
     // replace typing bubble text
     const bubble = pending?.querySelector(".bubble");
     if (bubble) bubble.textContent = answer;
+
+
   }
 
   function onReset() {
     els.chatLog.innerHTML = "";
     appendMessage(
       "assistant",
-      "איפסתי 🙂 אפשר לשאול שוב. למשל: \"מה הטכניקה?\", \"מה החומרים?\", \"מי היוצר/ת?\""
+      "איפסתי 🙂 אפשר לשאול שוב, או להשתמש בכפתורים למעלה."
     );
   }
 
@@ -221,5 +370,6 @@
 
   els.resetBtn.addEventListener("click", onReset);
 
+  setupVoiceInput(); 
   await loadExhibit();
 })();

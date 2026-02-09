@@ -1,95 +1,61 @@
-export async function handler(event) {
+exports.handler = async (event) => {
   try {
-    // Allow preflight
-    if (event.httpMethod === "OPTIONS") {
-      return {
-        statusCode: 204,
-        headers: corsHeaders(event),
-        body: "",
-      };
-    }
-
     if (event.httpMethod !== "POST") {
-      return {
-        statusCode: 405,
-        headers: corsHeaders(event),
-        body: JSON.stringify({ error: "Method not allowed" }),
-      };
+      return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return {
-        statusCode: 500,
-        headers: corsHeaders(event),
-        body: JSON.stringify({ error: "Missing OPENAI_API_KEY" }),
-      };
+      return { statusCode: 500, body: JSON.stringify({ error: "Missing OPENAI_API_KEY" }) };
     }
 
-    const debugEnabled =
-      (event.queryStringParameters?.debug === "1") ||
-      (event.headers["x-debug"] === "1");
-
-    const { exhibitId, question } = safeJsonParse(event.body);
+    const { exhibitId, question } = JSON.parse(event.body || "{}");
     if (!exhibitId || !question) {
-      return {
-        statusCode: 400,
-        headers: corsHeaders(event),
-        body: JSON.stringify({ error: "Missing exhibitId or question" }),
-      };
+      return { statusCode: 400, body: JSON.stringify({ error: "Missing exhibitId or question" }) };
     }
 
-    // Derive baseUrl from request origin
     const origin = event.headers.origin || event.headers.referer || "";
     const baseUrl = origin ? new URL(origin).origin : null;
     if (!baseUrl) {
-      return {
-        statusCode: 500,
-        headers: corsHeaders(event),
-        body: JSON.stringify({ error: "Cannot resolve origin" }),
-      };
+      return { statusCode: 500, body: JSON.stringify({ error: "Cannot resolve origin" }) };
     }
 
-    const exhibitsRes = await fetch(`${baseUrl}/assets/exhibits.json`, {
-      cache: "no-store",
-    });
-
-    if (!exhibitsRes.ok) {
-      return {
-        statusCode: 500,
-        headers: corsHeaders(event),
-        body: JSON.stringify({
-          error: "Failed to load exhibits.json",
-          status: exhibitsRes.status,
-        }),
-      };
-    }
-
+    const exhibitsRes = await fetch(`${baseUrl}/assets/exhibits.json`, { cache: "no-store" });
     const exhibitsData = await exhibitsRes.json();
-    const exhibit = exhibitsData?.exhibits?.[exhibitId];
 
+    const exhibit = exhibitsData?.exhibits?.[exhibitId];
     if (!exhibit) {
+      return { statusCode: 404, body: JSON.stringify({ error: "Exhibit not found" }) };
+    }
+
+    // ===== Creator-only fast path (NO OpenAI call) =====
+    if (isCreatorQuestion(question)) {
+      const creatorName = String(exhibit.creatorName || "").trim();
+      const creatorBio = String(exhibit.creatorBio || "").trim();
+
+      const answer = buildCreatorAnswer(creatorName, creatorBio);
+
       return {
-        statusCode: 404,
-        headers: corsHeaders(event),
-        body: JSON.stringify({ error: "Exhibit not found" }),
+        statusCode: 200,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ answer }),
       };
     }
+    // ================================================
 
     const exhibitionSummary = exhibitsData?.museum?.exhibitionSummary || "";
-
     const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
     const exhibitSummary = limitChars(fullDesc, 1500);
 
     const context = {
       exhibitionSummary,
-      title: exhibit.title || "",
-      subtitle: exhibit.subtitle || "",
-      tags: Array.isArray(exhibit.tags) ? exhibit.tags : [],
-      facts: Array.isArray(exhibit.facts) ? exhibit.facts : [],
-      curatorNotes: Array.isArray(exhibit.curatorNotes) ? exhibit.curatorNotes : [],
       creatorName: exhibit.creatorName || "",
       creatorBio: exhibit.creatorBio || "",
+      title: exhibit.title,
+      subtitle: exhibit.subtitle,
+      tags: exhibit.tags,
+      facts: exhibit.facts,
+      curatorNotes: exhibit.curatorNotes,
       exhibitSummary,
     };
 
@@ -106,11 +72,6 @@ export async function handler(event) {
 - השתמש/י במונחים "היצירה" / "המיצג" כשעונים על exhibitSummary.
 - השתמש/י במונח "התערוכה" רק כשמתייחסים במפורש ל-exhibitionSummary.
 - אל תערבב/י בין המושגים: אל תכתוב/י "התערוכה היא פרויקט גמר" אם המידע מופיע ב-exhibitSummary.
-- אם נשאלת שאלה על היוצר/ת (למשל "ספר לי על היוצרת" / "מי זו ..."):
-  - אם יש creatorBio: הצג/י 1–3 משפטים שמבוססים רק על creatorBio, והוסף/י בסוף:
-    "מעבר לזה אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי."
-  - אם creatorBio ריק: אמור/י "היוצרת של המיצג היא <creatorName>. אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי."
-  - אל תענה/י "אין מידע ביוגרפי נוסף" אם creatorBio קיים.
 `;
 
     const userPrompt = `
@@ -126,100 +87,91 @@ ${JSON.stringify(context, null, 2)}
 ${question}
 `;
 
-    const requestBody = {
-      model: "gpt-4o-mini",
-      input: [
-        { role: "system", content: system },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.2,
-    };
-
     const openaiRes = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        Authorization: `Bearer ${apiKey}`,
+        "Authorization": `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
-      body: JSON.stringify(requestBody),
+      body: JSON.stringify({
+        model: "gpt-4o-mini-2024-07-18",
+        input: [
+          { role: "system", content: system },
+          { role: "user", content: userPrompt },
+        ],
+        temperature: 0.2,
+      }),
     });
 
     const openaiJson = await openaiRes.json();
 
-    // Server logs (Netlify function logs)
-    console.log("OPENAI_CALL", {
-      exhibitId,
-      baseUrl,
-      modelRequested: requestBody.model,
-      modelReturned: openaiJson?.model,
-      status: openaiRes.status,
-      usage: openaiJson?.usage || null,
-    });
-
     if (!openaiRes.ok) {
-      return {
-        statusCode: 500,
-        headers: corsHeaders(event),
-        body: JSON.stringify({ error: "OpenAI error", details: openaiJson }),
-      };
+      return { statusCode: 500, body: JSON.stringify({ error: "OpenAI error", details: openaiJson }) };
     }
 
-    const answer =
-      extractText(openaiJson) ||
-      "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
-
-    const payload = debugEnabled
-      ? {
-          answer,
-          debug: {
-            model: openaiJson?.model,
-            status: openaiRes.status,
-            usage: openaiJson?.usage || null,
-          },
-        }
-      : { answer };
+    const answer = extractText(openaiJson) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
 
     return {
       statusCode: 200,
-      headers: {
-        ...corsHeaders(event),
-        "Content-Type": "application/json; charset=utf-8",
-      },
-      body: JSON.stringify(payload),
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ answer }),
     };
   } catch (err) {
-    return {
-      statusCode: 500,
-      headers: corsHeaders(event),
-      body: JSON.stringify({ error: "Server error", details: String(err) }),
-    };
+    return { statusCode: 500, body: JSON.stringify({ error: "Server error", details: String(err) }) };
   }
+};
+
+function isCreatorQuestion(q) {
+  const s = String(q || "").trim();
+  if (!s) return false;
+
+  // normalize common variants
+  const normalized = s
+    .replace(/\u05F3/g, "'")  // Hebrew geresh to '
+    .replace(/\s+/g, " ");
+
+  const patterns = [
+    // "Who is the creator"
+    /מי\s+היוצר(?:\/ת)?/i,
+    /מי\s+היוצרת/i,
+    /מי\s+היוצרים/i,
+
+    // "Tell me about the creator" (with/without the /י form)
+    /ספר(?:\/י)?\s+לי\s+על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
+    /ספר(?:\/י)?\s+לי\s+על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)\s+של\s+המיצג/i,
+    /ספר(?:\/י)?\s+לי\s+על\s+היוצר(?:\/ת)?\s+של\s+המיצג/i,
+
+    // "About the creator"
+    /על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
+    /אודות\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
+
+    // bio
+    /ביוגרפ/i,
+  ];
+
+  return patterns.some((p) => p.test(normalized));
 }
 
-function corsHeaders(event) {
-  const origin = event.headers.origin || event.headers.referer || "*";
-  const allowOrigin = origin ? new URL(origin).origin : "*";
 
-  return {
-    "Access-Control-Allow-Origin": allowOrigin,
-    "Access-Control-Allow-Headers": "Content-Type, X-Debug",
-    "Access-Control-Allow-Methods": "POST, OPTIONS",
-  };
-}
 
-function safeJsonParse(str) {
-  try {
-    return JSON.parse(str || "{}");
-  } catch {
-    return {};
+function buildCreatorAnswer(creatorName, creatorBio) {
+  const name = creatorName || "היוצר/ת";
+
+  if (!creatorBio) {
+    return `היוצרת של המיצג היא ${name}. אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי.`;
   }
+
+  const bio = limitChars(creatorBio, 450);
+  const suffix = "מעבר לזה אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי.";
+  const sep = /[.!?״”"]\s*$/.test(bio) ? " " : ". ";
+
+  // Only bio + suffix (no adding creatorName facts)
+  return `${bio}${sep}${suffix}`;
 }
+
 
 function stripHtml(html) {
-  return String(html || "")
-    .replace(/<[^>]*>/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
+  return String(html).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
 }
 
 function extractText(openaiJson) {
