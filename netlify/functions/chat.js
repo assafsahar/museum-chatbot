@@ -116,9 +116,16 @@ ${question}
     return {
   statusCode: 200,
   headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({ answer })
-
+  body: JSON.stringify({
+    answer,
+    debug: {
+      model: openaiJson?.model,
+      usage: openaiJson?.usage,
+      status: openaiRes.status
+    }
+  })
 };
+
 
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: "Server error", details: String(err) }) };

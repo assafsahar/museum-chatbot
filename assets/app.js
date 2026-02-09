@@ -73,6 +73,10 @@ async function loadExhibit(){
   state.museum = data.museum || {};
   const exhibits = data.exhibits || {};
   state.exhibit = exhibits[state.exhibitId];
+  if (data.debug) {
+  addMsg("assistant", "DEBUG: " + JSON.stringify(data.debug, null, 2));
+}
+
 
   if(!state.exhibit){
     addMsg("assistant", "לא נמצא מיצג. בדוק/י את הקישור של ה-QR.");
