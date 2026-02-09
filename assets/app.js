@@ -84,29 +84,28 @@ function smoothScrollToY(targetY, durationMs = 520) {
   requestAnimationFrame(step);
 }
 
-  function scrollChatIntoViewIfMobile(withFlash = false) {
+  function scrollChatIntoViewIfMobile() {
   if (!window.matchMedia("(max-width: 900px)").matches) return;
 
-  const chatCard = document.querySelector(".chat-wrap");
-  if (!chatCard) return;
+  // Scroll to the input area (so user can keep typing immediately)
+  const inputEl = els.q || document.getElementById("q");
+  if (!inputEl) return;
 
   requestAnimationFrame(() => {
-    const rect = chatCard.getBoundingClientRect();
+    const rect = inputEl.getBoundingClientRect();
 
-    // Scroll target so chat card starts a bit below the top (nice padding)
-    const topPadding = 12;
-    const targetY = (window.scrollY || window.pageYOffset) + rect.top - topPadding;
+    // Put the input comfortably above the bottom (for on-screen keyboard)
+    const bottomPadding = 16;
+    const targetY =
+      (window.scrollY || window.pageYOffset) +
+      rect.bottom -
+      window.innerHeight +
+      bottomPadding;
 
-    smoothScrollToY(targetY, 560);
-
-    if (withFlash) {
-      chatCard.classList.remove("flash");
-      void chatCard.offsetWidth;
-      chatCard.classList.add("flash");
-      window.setTimeout(() => chatCard.classList.remove("flash"), 650);
-    }
+    smoothScrollToY(targetY, 520);
   });
 }
+
 
   // --- Voice input (Speech-to-Text) ---
   const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -203,7 +202,7 @@ function smoothScrollToY(targetY, durationMs = 520) {
       btn.addEventListener("click", async () => {
     // Show as user-facing natural language
     appendMessage("user", t);
-    scrollChatIntoViewIfMobile(false);
+    scrollChatIntoViewIfMobile();
 
 
     // Default: server path
@@ -335,7 +334,7 @@ function smoothScrollToY(targetY, durationMs = 520) {
 
     els.q.value = "";
     appendMessage("user", q);
-    scrollChatIntoViewIfMobile(false);
+    scrollChatIntoViewIfMobile();
 
     // temporary "typing" bubble
     const pending = appendMessage("assistant", "רגע…");
