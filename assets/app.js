@@ -69,6 +69,8 @@ async function loadExhibit(){
 
   const res = await fetch("assets/exhibits.json", { cache: "no-store" });
   const data = await res.json();
+  console.log("CLIENT DEBUG RESPONSE:", data);
+
 
   state.museum = data.museum || {};
   const exhibits = data.exhibits || {};
