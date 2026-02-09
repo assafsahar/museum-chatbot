@@ -24,6 +24,8 @@ function addMsg(role, text){
   box.appendChild(body);
   el("chatLog").appendChild(box);
   el("chatLog").scrollTop = el("chatLog").scrollHeight;
+
+  return box; // Important: allow removing "thinking..." precisely
 }
 
 function setTags(tags){
@@ -35,8 +37,6 @@ function setTags(tags){
     btn.type = "button";
     btn.className = "tag";
     btn.style.cursor = "pointer";
-
-    // Make it feel like a button, not just a pill
     btn.setAttribute("aria-label", `שאלה בנושא: ${label}`);
     btn.textContent = label;
 
@@ -53,32 +53,23 @@ function setTags(tags){
 function tagToQuestion(label){
   const normalized = String(label).trim();
 
-  // Map known labels to good museum questions
   if (normalized === "טכניקה") return "באיזו טכניקה נוצר המיצג? אפשר לפרט?";
   if (normalized === "חומר") return "מאילו חומרים עשוי המיצג? ומה המשמעות של הבחירה בחומרים האלה?";
   if (normalized === "הקשר") return "מה ההקשר או הסיפור מאחורי המיצג? מה רצו להעביר בו?";
   if (normalized === "יוצר/ת") return "ספר/י לי על היוצר/ת של המיצג.";
 
-  // Fallback for any other tag
   return `ספר/י לי עוד על "${normalized}" בהקשר של המיצג.`;
 }
-
 
 async function loadExhibit(){
   state.exhibitId = qs("id") || "exhibit-01";
 
   const res = await fetch("assets/exhibits.json", { cache: "no-store" });
   const data = await res.json();
-  console.log("CLIENT DEBUG RESPONSE:", data);
-
 
   state.museum = data.museum || {};
   const exhibits = data.exhibits || {};
   state.exhibit = exhibits[state.exhibitId];
-  if (data.debug) {
-  addMsg("assistant", "DEBUG: " + JSON.stringify(data.debug, null, 2));
-}
-
 
   if(!state.exhibit){
     addMsg("assistant", "לא נמצא מיצג. בדוק/י את הקישור של ה-QR.");
@@ -95,81 +86,85 @@ async function loadExhibit(){
   el("heroImg").src = state.exhibit.heroImage || "";
   el("description").innerHTML = state.exhibit.exhibitDescriptionHtml || "";
 
-
   if(state.exhibit.creatorImage || state.exhibit.creatorName){
     el("creatorBox").style.display = "flex";
     el("creatorImg").src = state.exhibit.creatorImage || "";
     el("creatorText").textContent = state.exhibit.creatorName || "";
+  } else {
+    el("creatorBox").style.display = "none";
   }
 
   if(state.exhibit.videoUrl){
     el("videoTitle").style.display = "block";
     el("videoBox").style.display = "block";
     el("videoFrame").src = state.exhibit.videoUrl;
+  } else {
+    el("videoTitle").style.display = "none";
+    el("videoBox").style.display = "none";
+    el("videoFrame").src = "";
   }
 
-  addMsg("assistant", "שלום 🙂 אפשר לשאול אותי שאלות על המיצג, למשל: \"מה הטכניקה?\", \"מה החומרים?\", \"מי היוצרת?\" או \"מה הסיפור מאחורי היצירה?\"");
-
+  addMsg(
+    "assistant",
+    "שלום 🙂 אפשר לשאול אותי שאלות על המיצג, למשל: \"מה הטכניקה?\", \"מה החומרים?\", \"מי היוצרת?\" או \"מה הסיפור מאחורי היצירה?\""
+  );
 }
 
 function wireUI(){
   el("sendBtn").addEventListener("click", async () => {
-  const q = el("q").value.trim();
-  if(!q) return;
+    const q = el("q").value.trim();
+    if(!q) return;
 
-  el("q").value = "";
-  addMsg("user", q);
+    el("q").value = "";
+    addMsg("user", q);
 
-  // Optional: show a tiny "thinking" message
-  const thinkingText = "חושב...";
-  addMsg("assistant", thinkingText);
+    // Show a "thinking" message and keep a direct reference to it
+    const thinkingMsgEl = addMsg("assistant", "חושב...");
 
-  try{
-    const resp = await fetch("/.netlify/functions/chat", {
-      method:"POST",
-      headers:{ "Content-Type":"application/json" },
-      body: JSON.stringify({
-        exhibitId: state.exhibitId,
-        question: q
-      })
-    });
+    try{
+      const resp = await fetch("/.netlify/functions/chat", {
+        method:"POST",
+        headers:{ "Content-Type":"application/json" },
+        body: JSON.stringify({
+          exhibitId: state.exhibitId,
+          question: q
+        })
+      });
 
-    const data = await resp.json();
-    console.log("CHAT DEBUG RESPONSE:", data);
-    console.log("CHAT DEBUG STATUS:", res.status);
-if (data.debug) {
-  addMsg("assistant", "DEBUG: " + JSON.stringify(data.debug, null, 2));
-}
+      const data = await resp.json();
 
+      // Debug in console (only for you)
+      console.log("CHAT DEBUG STATUS:", resp.status);
+      console.log("CHAT DEBUG RESPONSE:", data);
 
+      // Remove only the "thinking..." message (not any other assistant messages)
+      if (thinkingMsgEl && thinkingMsgEl.parentElement) {
+        thinkingMsgEl.parentElement.removeChild(thinkingMsgEl);
+      }
 
-    // Remove the last assistant message if it's the "thinking" one
-    const chat = el("chatLog");
-    const last = chat.lastElementChild;
-    if(last && last.classList.contains("assistant")){
-      // last message could be thinking
-      chat.removeChild(last);
+      if(!resp.ok){
+        const msg =
+          data?.error === "OpenAI error"
+            ? "שגיאה מהשרת: OpenAI error"
+            : (data?.error || "שגיאה. נסה/י שוב.");
+        addMsg("assistant", msg);
+        return;
+      }
+
+      // Show debug in UI if exists
+      if (data.debug) {
+        addMsg("assistant", "DEBUG:\n" + JSON.stringify(data.debug, null, 2));
+      }
+
+      addMsg("assistant", data.answer || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.");
+
+    }catch(e){
+      if (thinkingMsgEl && thinkingMsgEl.parentElement) {
+        thinkingMsgEl.parentElement.removeChild(thinkingMsgEl);
+      }
+      addMsg("assistant", "שגיאת רשת. נסה/י שוב.");
     }
-
-    if(!resp.ok){
-  addMsg("assistant", data?.error || "שגיאה. נסה/י שוב.");
-  return;
-}
-
-
-    addMsg("assistant", data.answer || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.");
-
-  }catch(e){
-    const chat = el("chatLog");
-    const last = chat.lastElementChild;
-    if(last && last.classList.contains("assistant")){
-      chat.removeChild(last);
-    }
-    addMsg("assistant", "שגיאת רשת. נסה/י שוב.");
-  }
-});
-
-
+  });
 
   el("resetBtn").addEventListener("click", () => {
     el("chatLog").innerHTML = "";
