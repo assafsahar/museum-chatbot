@@ -1,185 +1,81 @@
-const state = {
-  exhibitId: null,
-  exhibit: null,
-  museum: null
-};
+<!doctype html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>מדריך אינטראקטיבי</title>
+  <link rel="stylesheet" href="assets/styles.css"/>
+</head>
+<body>
+  <div class="container">
 
-function qs(name){
-  return new URLSearchParams(location.search).get(name);
-}
-function el(id){ return document.getElementById(id); }
+    <div class="topbar">
+      <div class="brand">
+        <img id="museumLogo" src="assets/logo.png" alt="לוגו מוזיאון"/>
+        <div>
+          <div class="museum-name" id="museumName">מוזיאון</div>
+          <div class="small">מדריך שקט – מבוסס צ׳אט</div>
+        </div>
+      </div>
+      <a class="small" href="index.html">חזרה</a>
+    </div>
 
-function addMsg(role, text){
-  const box = document.createElement("div");
-  box.className = "msg " + (role === "user" ? "user" : "assistant");
+    <div class="grid">
+      <div class="card">
+        <div class="hero">
+          <img id="heroImg" alt="תמונה של המיצג"/>
+        </div>
+        <div class="content">
+          <h1 class="h1" id="title"></h1>
+          <p class="h2" id="subtitle"></p>
 
-  const meta = document.createElement("div");
-  meta.className = "meta";
-  meta.textContent = role === "user" ? "מבקר" : "מדריך";
+          
 
-  const body = document.createElement("div");
-  body.textContent = text;
+          <div class="creator" id="creatorBox" style="display:none;">
+            <img id="creatorImg" alt="יוצר/ת"/>
+            <div>
+              <div style="font-weight:900;">יוצר/ת</div>
+              <div class="small" id="creatorText"></div>
+            </div>
+          </div>
 
-  box.appendChild(meta);
-  box.appendChild(body);
-  el("chatLog").appendChild(box);
-  el("chatLog").scrollTop = el("chatLog").scrollHeight;
+          <div class="tags" id="tags"></div>
+          
+          <div class="section-title">תיאור</div>
+          <div id="description"></div>
 
-  return box; // Important: allow removing "thinking..." precisely
-}
+          <div class="section-title" id="videoTitle" style="display:none;">וידאו</div>
+          <div id="videoBox" style="display:none; padding-bottom:14px;">
+            <div class="card" style="box-shadow:none;">
+              <div style="aspect-ratio:16/9;">
+                <iframe id="videoFrame" style="width:100%; height:100%; border:0;" allowfullscreen></iframe>
+              </div>
+            </div>
+          </div>
 
-function setTags(tags){
-  const wrap = el("tags");
-  wrap.innerHTML = "";
+          <div class="small">
+            המערכת עונה רק לפי מידע שהוזן מראש. אם אין מידע – תקבל/י תשובה “אין לי מספיק מידע על זה”.
+          </div>
+        </div>
+      </div>
 
-  (tags || []).forEach(label => {
-    const btn = document.createElement("button");
-    btn.type = "button";
-    btn.className = "tag";
-    btn.style.cursor = "pointer";
-    btn.setAttribute("aria-label", `שאלה בנושא: ${label}`);
-    btn.textContent = label;
+      <div class="card chat-wrap">
+        <div class="chat-header">
+          <div class="title">שאל/י את המדריך</div>
+          <button id="resetBtn" class="reset-btn">איפוס</button>
+        </div>
 
-    btn.addEventListener("click", () => {
-      const question = tagToQuestion(label);
-      el("q").value = question;
-      el("q").focus();
-    });
+        <div class="chat-log" id="chatLog"></div>
 
-    wrap.appendChild(btn);
-  });
-}
+        <div class="chat-input">
+          <textarea id="q" placeholder="כתוב/י שאלה..."></textarea>
+          <button id="sendBtn">שלח</button>
+        </div>
+      </div>
+    </div>
 
-function tagToQuestion(label){
-  const normalized = String(label).trim();
+  </div>
 
-  if (normalized === "טכניקה") return "באיזו טכניקה נוצר המיצג? אפשר לפרט?";
-  if (normalized === "חומר") return "מאילו חומרים עשוי המיצג? ומה המשמעות של הבחירה בחומרים האלה?";
-  if (normalized === "הקשר") return "מה ההקשר או הסיפור מאחורי המיצג? מה רצו להעביר בו?";
-  if (normalized === "יוצר/ת") return "ספר/י לי על היוצר/ת של המיצג.";
-
-  return `ספר/י לי עוד על "${normalized}" בהקשר של המיצג.`;
-}
-
-async function loadExhibit(){
-  state.exhibitId = qs("id") || "exhibit-01";
-
-  const res = await fetch("assets/exhibits.json", { cache: "no-store" });
-  const data = await res.json();
-
-  state.museum = data.museum || {};
-  const exhibits = data.exhibits || {};
-  state.exhibit = exhibits[state.exhibitId];
-
-  if(!state.exhibit){
-    addMsg("assistant", "לא נמצא מיצג. בדוק/י את הקישור של ה-QR.");
-    return;
-  }
-
-  el("museumName").textContent = state.museum.name || "מוזיאון";
-  el("museumLogo").src = state.museum.logo || "assets/logo.png";
-
-  el("title").textContent = state.exhibit.title || "";
-  el("subtitle").textContent = state.exhibit.subtitle || "";
-  setTags(state.exhibit.tags);
-
-  el("heroImg").src = state.exhibit.heroImage || "";
-  el("description").innerHTML = state.exhibit.exhibitDescriptionHtml || "";
-
-  if(state.exhibit.creatorImage || state.exhibit.creatorName){
-    el("creatorBox").style.display = "flex";
-    el("creatorImg").src = state.exhibit.creatorImage || "";
-    el("creatorText").textContent = state.exhibit.creatorName || "";
-  } else {
-    el("creatorBox").style.display = "none";
-  }
-
-  if(state.exhibit.videoUrl){
-    el("videoTitle").style.display = "block";
-    el("videoBox").style.display = "block";
-    el("videoFrame").src = state.exhibit.videoUrl;
-  } else {
-    el("videoTitle").style.display = "none";
-    el("videoBox").style.display = "none";
-    el("videoFrame").src = "";
-  }
-
-  addMsg(
-    "assistant",
-    "שלום 🙂 אפשר לשאול אותי שאלות על המיצג, למשל: \"מה הטכניקה?\", \"מה החומרים?\", \"מי היוצרת?\" או \"מה הסיפור מאחורי היצירה?\""
-  );
-}
-
-function wireUI(){
-  el("sendBtn").addEventListener("click", async () => {
-    const q = el("q").value.trim();
-    if(!q) return;
-
-    el("q").value = "";
-    addMsg("user", q);
-
-    // Show a "thinking" message and keep a direct reference to it
-    const thinkingMsgEl = addMsg("assistant", "חושב...");
-
-    try{
-      const resp = await fetch("/.netlify/functions/chat", {
-        method:"POST",
-        headers:{ "Content-Type":"application/json" },
-        body: JSON.stringify({
-          exhibitId: state.exhibitId,
-          question: q
-        })
-      });
-
-      const data = await resp.json();
-
-      // Debug in console (only for you)
-      console.log("CHAT DEBUG STATUS:", resp.status);
-      console.log("CHAT DEBUG RESPONSE:", data);
-
-      // Remove only the "thinking..." message (not any other assistant messages)
-      if (thinkingMsgEl && thinkingMsgEl.parentElement) {
-        thinkingMsgEl.parentElement.removeChild(thinkingMsgEl);
-      }
-
-      if(!resp.ok){
-        const msg =
-          data?.error === "OpenAI error"
-            ? "שגיאה מהשרת: OpenAI error"
-            : (data?.error || "שגיאה. נסה/י שוב.");
-        addMsg("assistant", msg);
-        return;
-      }
-
-      // Show debug in UI if exists
-      if (data.debug) {
-        addMsg("assistant", "DEBUG:\n" + JSON.stringify(data.debug, null, 2));
-      }
-
-      addMsg("assistant", data.answer || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.");
-
-    }catch(e){
-      if (thinkingMsgEl && thinkingMsgEl.parentElement) {
-        thinkingMsgEl.parentElement.removeChild(thinkingMsgEl);
-      }
-      addMsg("assistant", "שגיאת רשת. נסה/י שוב.");
-    }
-  });
-
-  el("resetBtn").addEventListener("click", () => {
-    el("chatLog").innerHTML = "";
-    addMsg("assistant", "איפוס בוצע. שאל/י שוב 🙂");
-  });
-
-  el("q").addEventListener("keydown", (ev) => {
-    if(ev.key === "Enter" && !ev.shiftKey){
-      ev.preventDefault();
-      el("sendBtn").click();
-    }
-  });
-}
-
-window.addEventListener("DOMContentLoaded", async () => {
-  await loadExhibit();
-  wireUI();
-});
+  <script src="assets/app.js"></script>
+</body>
+</html>
