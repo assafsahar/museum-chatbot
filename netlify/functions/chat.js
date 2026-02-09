@@ -45,6 +45,10 @@ exports.handler = async (event) => {
     curatorNotes: exhibit.curatorNotes,
     exhibitSummary
     };
+    console.log("DEBUG baseUrl:", baseUrl);
+    console.log("DEBUG exhibitId:", exhibitId);
+    console.log("DEBUG model (request):", "gpt-4o-mini");
+
 
 
     const system = `
@@ -98,6 +102,10 @@ ${question}
     });
 
     const openaiJson = await openaiRes.json();
+    console.log("DEBUG openai status:", openaiRes.status);
+    console.log("DEBUG openai model (response):", openaiJson?.model);
+    console.log("DEBUG openai usage:", openaiJson?.usage);
+
 
     if (!openaiRes.ok) {
       return { statusCode: 500, body: JSON.stringify({ error: "OpenAI error", details: openaiJson }) };
