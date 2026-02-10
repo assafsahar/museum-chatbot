@@ -8,7 +8,6 @@
 </head>
 <body>
   <div class="container">
-
     <div class="topbar">
       <div class="brand">
         <img id="museumLogo" src="assets/logo.png" alt="לוגו מוזיאון"/>
@@ -25,11 +24,10 @@
         <div class="hero">
           <img id="heroImg" alt="תמונה של המיצג"/>
         </div>
+
         <div class="content">
           <h1 class="h1" id="title"></h1>
           <p class="h2" id="subtitle"></p>
-
-          
 
           <div class="creator" id="creatorBox" style="display:none;">
             <img id="creatorImg" alt="יוצר/ת"/>
@@ -40,7 +38,7 @@
           </div>
 
           <div class="tags" id="tags"></div>
-          
+
           <div class="section-title">תיאור</div>
           <div id="description"></div>
 
@@ -54,12 +52,12 @@
           </div>
 
           <div class="small">
-            המערכת עונה רק לפי מידע שהוזן מראש. אם אין מידע – תקבל/י תשובה “אין לי מספיק מידע על זה”.
+            המערכת עונה רק לפי מידע שהוזן מראש. אם אין מידע – תקבל/י תשובה “אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.”
           </div>
         </div>
       </div>
 
-      <div class="card chat-wrap">
+      <div class="card chat-wrap" id="chatWrap">
         <div class="chat-header">
           <div class="title">שאל/י את המדריך</div>
           <button id="resetBtn" class="reset-btn">איפוס</button>
@@ -74,9 +72,8 @@
         </div>
       </div>
     </div>
-
   </div>
 
-  <script src="assets/app.js"></script>
+  <script type="module" src="assets/app.js"></script>
 </body>
 </html>

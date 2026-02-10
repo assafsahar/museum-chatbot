@@ -19,66 +19,26 @@
     </div>
 
     <div class="card">
-        <div class="exhibit-hero">
-            <img id="exhibitionImg" alt="תמונת תערוכה" />
+        <div class="hero hero--exhibition">
+            <img id="exhibitionImg" alt="תמונת התערוכה"/>
         </div>
-
         <div class="content">
-            <div class="section-title" id="exhibitionTitle"></div>
-            <div class="small" id="exhibitionSummary"></div>
-
-            <div class="section-title" style="margin-top:18px;">מיצגים</div>
-            <div id="list"></div>
-
-            <div class="small" style="margin-top:12px;">
-            דוגמה לקישור QR: <b>exhibit.html?id=exhibit-01</b>
-            </div>
+            <h1 class="h1" id="exhibitionTitle"></h1>
+            <p class="small" id="exhibitionSummary"></p>
         </div>
     </div>
 
+    <div class="card">
+      <div class="content">
+        <div class="section-title">מיצגים</div>
+        <div id="list"></div>
+        <div class="small" style="margin-top:12px;">
+          דוגמה לקישור QR: <b>exhibit.html?id=exhibit-01</b>
+        </div>
+      </div>
+    </div>
   </div>
 
-  <script>
-    (async () => {
-      const res = await fetch("assets/exhibits.json", { cache: "no-store" });
-      const data = await res.json();
-
-      document.getElementById("exhibitionTitle").textContent =
-        data.museum?.exhibitionTitle || "תערוכה";
-
-        document.getElementById("exhibitionSummary").textContent =
-        data.museum?.exhibitionSummary || "";
-
-        const exhibitionImg = document.getElementById("exhibitionImg");
-        const exhibitionSrc = (data.museum?.exhibitionImage || "").trim();
-
-        if (exhibitionSrc) {
-        exhibitionImg.src = exhibitionSrc;
-        exhibitionImg.style.display = "block";
-        } else {
-        exhibitionImg.style.display = "none";
-        }
-
-      document.getElementById("museumName").textContent = data.museum?.name || "מוזיאון";
-      document.getElementById("museumLogo").src = data.museum?.logo || "assets/logo.png";
-
-      const list = document.getElementById("list");
-      const exhibits = data.exhibits || {};
-
-      Object.entries(exhibits).forEach(([id, ex]) => {
-        const row = document.createElement("div");
-        row.style.padding = "10px 0";
-        row.style.borderBottom = "1px solid #e5e7eb";
-
-        const a = document.createElement("a");
-        a.href = `exhibit.html?id=${encodeURIComponent(id)}`;
-        a.style.textDecoration = "none";
-        a.innerHTML = `<b>${ex.title}</b><div class="small">${ex.subtitle || ""}</div>`;
-
-        row.appendChild(a);
-        list.appendChild(row);
-      });
-    })();
-  </script>
+  <script type="module" src="assets/index.js"></script>
 </body>
 </html>

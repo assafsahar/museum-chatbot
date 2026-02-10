@@ -1,3 +1,5 @@
+// netlify/functions/chat.js
+
 // --- In-memory caches (survive on warm function instances) ---
 const EXHIBITS_TTL_MS = 60 * 1000;        // 1 minute
 const ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -25,6 +27,7 @@ function normalizeQuestion(q) {
 function cacheGet(key) {
   const v = answerCache.get(key);
   if (!v) return null;
+
   if (nowMs() - v.ts > ANSWER_TTL_MS) {
     answerCache.delete(key);
     return null;
@@ -33,7 +36,6 @@ function cacheGet(key) {
 }
 
 function cacheSet(key, answer) {
-  // simple size cap (drop oldest-ish)
   if (answerCache.size >= MAX_CACHE_ITEMS) {
     const firstKey = answerCache.keys().next().value;
     if (firstKey) answerCache.delete(firstKey);
@@ -67,11 +69,37 @@ function jsonResponse(statusCode, payload) {
     statusCode,
     headers: {
       "Content-Type": "application/json",
-      // Don't rely on CDN caching for POST; our cache is in-memory
       "Cache-Control": "no-store",
     },
     body: JSON.stringify(payload),
   };
+}
+
+function stripHtml(html) {
+  return String(html || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function limitChars(text, maxChars) {
+  const t = String(text || "").trim();
+  if (t.length <= maxChars) return t;
+  return t.slice(0, maxChars).trim() + "…";
+}
+
+function extractText(openaiJson) {
+  if (typeof openaiJson?.output_text === "string") return openaiJson.output_text;
+
+  const out = openaiJson?.output || [];
+  for (const item of out) {
+    const content = item?.content || [];
+    for (const c of content) {
+      if (c?.type === "output_text" && typeof c.text === "string") return c.text;
+      if (typeof c?.text === "string") return c.text;
+    }
+  }
+  return "";
 }
 
 function getFactAnswer(exhibit, factKey) {
@@ -84,75 +112,118 @@ function getFactAnswer(exhibit, factKey) {
   return String(found).trim();
 }
 
+function isCreatorQuestion(q) {
+  const s = String(q || "").trim();
+  if (!s) return false;
+
+  const normalized = s
+    .replace(/\u05F3/g, "'")
+    .replace(/\s+/g, " ");
+
+  // If user asks about the exhibition (not the exhibit), don't route to creator fast path
+  if (/תערוכ/i.test(normalized)) return false;
+
+  const patterns = [
+    /מי\s+היוצר(?:\/ת)?/i,
+    /מי\s+היוצרת/i,
+    /מי\s+היוצרים/i,
+
+    /ספר(?:\/י)?\s+לי\s+על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
+    /על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
+    /אודות\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
+
+    /ביוגרפ/i,
+  ];
+
+  return patterns.some((p) => p.test(normalized));
+}
+
+function buildCreatorAnswer(creatorName, creatorBio) {
+  const name = creatorName || "היוצר/ת";
+
+  if (!creatorBio) {
+    return `היוצר/ת של המיצג הוא/היא ${name}. אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי.`;
+  }
+
+  const bio = limitChars(creatorBio, 450);
+  const suffix = "מעבר לזה אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי.";
+  const sep = /[.!?״”"]\s*$/.test(bio) ? " " : ". ";
+
+  return `${bio}${sep}${suffix}`;
+}
+
+// Accept both command-style and plain Hebrew button text
+function mapPlainButtonToCommand(qNorm) {
+  if (qNorm === "תקציר קצר") return "__SUMMARY__";
+  if (qNorm === "טכניקות") return "__FACT:טכניקות__";
+  if (qNorm === "חומרים") return "__FACT:חומרים__";
+  if (qNorm === "שנת יצירה") return "__FACT:שנת יצירה__";
+  if (qNorm === "אוצר/ת") return "__FACT:אוצר/ת__";
+  // "מי היוצר/ת" stays natural language – creator fast path will catch it
+  return qNorm;
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
-      return { statusCode: 405, body: JSON.stringify({ error: "Method not allowed" }) };
+      return jsonResponse(405, { error: "Method not allowed" });
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
-      return { statusCode: 500, body: JSON.stringify({ error: "Missing OPENAI_API_KEY" }) };
+      return jsonResponse(500, { error: "Missing OPENAI_API_KEY" });
     }
 
     const { exhibitId, question } = JSON.parse(event.body || "{}");
     if (!exhibitId || !question) {
-      return { statusCode: 400, body: JSON.stringify({ error: "Missing exhibitId or question" }) };
+      return jsonResponse(400, { error: "Missing exhibitId or question" });
     }
+
+    const qNormRaw = normalizeQuestion(question);
+    const qNorm = mapPlainButtonToCommand(qNormRaw);
 
     const origin = event.headers.origin || event.headers.referer || "";
     const baseUrl = origin ? new URL(origin).origin : null;
     if (!baseUrl) {
-      return { statusCode: 500, body: JSON.stringify({ error: "Cannot resolve origin" }) };
+      return jsonResponse(500, { error: "Cannot resolve origin" });
     }
 
     const exhibitsData = await getExhibitsData(baseUrl);
-
     const exhibit = exhibitsData?.exhibits?.[exhibitId];
     if (!exhibit) {
-      return { statusCode: 404, body: JSON.stringify({ error: "Exhibit not found" }) };
+      return jsonResponse(404, { error: "Exhibit not found" });
     }
 
-    const qNorm = normalizeQuestion(question);
     const cacheKey = `${exhibitId}||${qNorm}`;
-
-    // --- Answer cache (works for ALL questions) ---
     const cached = cacheGet(cacheKey);
     if (cached) {
-    return jsonResponse(200, { answer: cached, cached: true });
+      return jsonResponse(200, { answer: cached, cached: true });
     }
 
     // --- Fast paths (NO OpenAI) ---
     if (qNorm === "__SUMMARY__") {
-    const exhibitionSummary = exhibitsData?.museum?.exhibitionSummary || "";
-    const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
-    const exhibitSummary = limitChars(fullDesc, 700);
-
-    const answer = exhibitSummary || exhibitionSummary || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
-    cacheSet(cacheKey, answer);
-    return jsonResponse(200, { answer });
+      const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
+      const answer = limitChars(fullDesc, 700) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+      cacheSet(cacheKey, answer);
+      return jsonResponse(200, { answer, fast: "summary" });
     }
 
-    if (qNorm.startsWith("__FACT:")) {
-    const factKey = qNorm.replace("__FACT:", "").replace(/__$/, "").trim();
-    const answer = getFactAnswer(exhibit, factKey);
-    cacheSet(cacheKey, answer);
-    return jsonResponse(200, { answer });
+    if (qNorm.startsWith("__FACT:") && qNorm.endsWith("__")) {
+      const factKey = qNorm.replace("__FACT:", "").replace("__", "").trim();
+      const answer = getFactAnswer(exhibit, factKey);
+      cacheSet(cacheKey, answer);
+      return jsonResponse(200, { answer, fast: "fact" });
     }
 
-    // ===== Creator-only fast path (NO OpenAI call) =====
-    if (isCreatorQuestion(question)) {
-        const creatorName = String(exhibit.creatorName || "").trim();
-        const creatorBio = String(exhibit.creatorBio || "").trim();
-
-        const answer = buildCreatorAnswer(creatorName, creatorBio);
-
-        cacheSet(cacheKey, answer);               // ✅ cache it
-        return jsonResponse(200, { answer });     // ✅ consistent response helper
+    if (isCreatorQuestion(qNormRaw) || qNormRaw === "מי היוצר/ת") {
+      const creatorName = String(exhibit.creatorName || "").trim();
+      const creatorBio = String(exhibit.creatorBio || "").trim();
+      const answer = buildCreatorAnswer(creatorName, creatorBio);
+      cacheSet(cacheKey, answer);
+      return jsonResponse(200, { answer, fast: "creator" });
     }
 
-    // ================================================
-
+    // --- OpenAI path ---
     const exhibitionSummary = exhibitsData?.museum?.exhibitionSummary || "";
     const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
     const exhibitSummary = limitChars(fullDesc, 1500);
@@ -181,7 +252,7 @@ exports.handler = async (event) => {
 - תשובה קצרה (עד ~120 מילים), אלא אם המשתמש ביקש במפורש פירוט.
 - השתמש/י במונחים "היצירה" / "המיצג" כשעונים על exhibitSummary.
 - השתמש/י במונח "התערוכה" רק כשמתייחסים במפורש ל-exhibitionSummary.
-- אל תערבב/י בין המושגים: אל תכתוב/י "התערוכה היא פרויקט גמר" אם המידע מופיע ב-exhibitSummary.
+- אל תערבב/י בין המושגים.
 `;
 
     const userPrompt = `
@@ -194,7 +265,7 @@ ${JSON.stringify(context, null, 2)}
 - אם לא מופיע מידע ב-Context: החזר/י את משפט "אין לי מספיק מידע..." בדיוק.
 
 שאלת המבקר:
-${question}
+${qNormRaw}
 `;
 
     const openaiRes = await fetch("https://api.openai.com/v1/responses", {
@@ -214,9 +285,8 @@ ${question}
     });
 
     const openaiJson = await openaiRes.json();
-
     if (!openaiRes.ok) {
-      return { statusCode: 500, body: JSON.stringify({ error: "OpenAI error", details: openaiJson }) };
+      return jsonResponse(500, { error: "OpenAI error", details: openaiJson });
     }
 
     const answer = extractText(openaiJson) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
@@ -224,78 +294,6 @@ ${question}
     return jsonResponse(200, { answer });
 
   } catch (err) {
-    return { statusCode: 500, body: JSON.stringify({ error: "Server error", details: String(err) }) };
+    return jsonResponse(500, { error: "Server error", details: String(err) });
   }
 };
-
-function isCreatorQuestion(q) {
-  const s = String(q || "").trim();
-  if (!s) return false;
-
-  const normalized = s
-    .replace(/\u05F3/g, "'")  // Hebrew geresh to '
-    .replace(/\s+/g, " ");
-
-  // If the user asks about the exhibition (not the exhibit), don't route to creator fast path
-  if (/תערוכ/i.test(normalized)) return false;
-
-  const patterns = [
-    /מי\s+היוצר(?:\/ת)?/i,
-    /מי\s+היוצרת/i,
-    /מי\s+היוצרים/i,
-
-    /ספר(?:\/י)?\s+לי\s+על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
-    /ספר(?:\/י)?\s+לי\s+על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)\s+של\s+המיצג/i,
-    /ספר(?:\/י)?\s+לי\s+על\s+היוצר(?:\/ת)?\s+של\s+המיצג/i,
-
-    /על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
-    /אודות\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
-
-    /ביוגרפ/i,
-  ];
-
-  return patterns.some((p) => p.test(normalized));
-}
-
-
-
-
-function buildCreatorAnswer(creatorName, creatorBio) {
-  const name = creatorName || "היוצר/ת";
-
-  if (!creatorBio) {
-    return `היוצרת של המיצג היא ${name}. אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי.`;
-  }
-
-  const bio = limitChars(creatorBio, 450);
-  const suffix = "מעבר לזה אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי.";
-  const sep = /[.!?״”"]\s*$/.test(bio) ? " " : ". ";
-
-  // Only bio + suffix (no adding creatorName facts)
-  return `${bio}${sep}${suffix}`;
-}
-
-
-function stripHtml(html) {
-  return String(html).replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
-}
-
-function extractText(openaiJson) {
-  if (typeof openaiJson.output_text === "string") return openaiJson.output_text;
-
-  const out = openaiJson.output || [];
-  for (const item of out) {
-    const content = item.content || [];
-    for (const c of content) {
-      if (c.type === "output_text" && typeof c.text === "string") return c.text;
-      if (typeof c.text === "string") return c.text;
-    }
-  }
-  return "";
-}
-
-function limitChars(text, maxChars) {
-  const t = String(text || "").trim();
-  if (t.length <= maxChars) return t;
-  return t.slice(0, maxChars).trim() + "…";
-}
