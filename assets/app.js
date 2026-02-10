@@ -2,6 +2,12 @@
   const params = new URLSearchParams(location.search);
   const exhibitId = params.get("id") || "exhibit-01";
   const debugMode = params.get("debug") === "1";
+  const mockMode = params.get("mock") === "1";
+
+    // Keep current exhibit data for mock answers
+    let currentData = null;
+    let currentExhibit = null;
+
 
   // Match your HTML IDs exactly
   const els = {
@@ -273,6 +279,8 @@ function smoothScrollToY(targetY, durationMs = 520) {
   async function loadExhibit() {
     const res = await fetch("assets/exhibits.json", { cache: "no-store" });
     const data = await res.json();
+    currentData = data;
+
 
     if (debugMode) {
       console.log("CLIENT DEBUG EXHIBITS:", data);
@@ -281,6 +289,8 @@ function smoothScrollToY(targetY, durationMs = 520) {
     renderMuseum(data);
 
     const exhibit = data?.exhibits?.[exhibitId];
+    currentExhibit = exhibit || null;
+
     if (!exhibit) {
       appendMessage("assistant", "לא מצאתי את המיצג הזה.");
       return;
@@ -311,7 +321,104 @@ function smoothScrollToY(targetY, durationMs = 520) {
     );
   }
 
+  function stripHtml(html) {
+  return String(html || "")
+    .replace(/<[^>]*>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function getFactValue(exhibit, factKey) {
+  const facts = Array.isArray(exhibit?.facts) ? exhibit.facts : [];
+  const key = String(factKey || "").trim();
+
+  // facts are like "חומרים: ...", "טכניקות: ..."
+  const found = facts.find((f) => String(f).trim().startsWith(key + ":"));
+  if (!found) return null;
+
+  return String(found).split(":").slice(1).join(":").trim();
+}
+
+function mockAnswer(question) {
+  const qRaw = String(question || "").trim();
+  const q = qRaw.replace(/[?？！]/g, "").trim(); // normalize
+  const qLower = q.toLowerCase();
+  const ex = currentExhibit;
+  const museum = currentData?.museum || {};
+
+  if (!ex) return "מצב הדגמה: לא נמצא מיצג.";
+
+  // --- Exhibition (museum) questions ---
+  if (
+    qLower.includes("מהי התערוכה") ||
+    qLower.includes("מה התערוכה") ||
+    qLower.includes("על מה התערוכה") ||
+    qLower.includes("ספר לי על התערוכה") ||
+    qLower.includes("ספרי לי על התערוכה")
+  ) {
+    const title = museum.exhibitionTitle || "התערוכה";
+    const summary = museum.exhibitionSummary || "אין לי תקציר לתערוכה במצב הדגמה.";
+    return `${title}\n\n${summary}`;
+  }
+
+  // --- Fast paths (tokens that buttons send) ---
+  if (qRaw.startsWith("__FACT:") && qRaw.endsWith("__")) {
+    const key = qRaw.replace("__FACT:", "").replace("__", "").trim();
+    const val = getFactValue(ex, key);
+    return val ? `${key}: ${val}` : `אין לי מידע על ${key}.`;
+  }
+
+  if (qRaw === "__SUMMARY__" || qLower === "תקציר קצר" || qLower.includes("תקציר")) {
+    const text = stripHtml(ex.exhibitDescriptionHtml);
+    const firstSentence = text.split(".")[0]?.trim();
+    return firstSentence ? firstSentence + "." : "אין לי מספיק מידע לתקציר קצר.";
+  }
+
+  // --- Creator questions ---
+  if (
+    qLower.includes("מי היוצר") ||
+    qLower.includes("מי היוצרת") ||
+    qLower.includes("מי יצר") ||
+    qLower.includes("מי יצרה")
+  ) {
+    const name = ex.creatorName || "לא מצוין";
+    const bio = ex.creatorBio ? `\n\n${ex.creatorBio}` : "";
+    return `${name}${bio}`;
+  }
+
+  // --- Facts asked as free text ---
+  if (qLower.includes("טכניק")) {
+    const val = getFactValue(ex, "טכניקות");
+    return val ? `טכניקות: ${val}` : "אין לי מידע על טכניקות.";
+  }
+
+  if (qLower.includes("חומר")) {
+    const val = getFactValue(ex, "חומרים");
+    return val ? `חומרים: ${val}` : "אין לי מידע על חומרים.";
+  }
+
+  if (qLower.includes("שנת")) {
+    const val = getFactValue(ex, "שנת יצירה");
+    return val ? `שנת יצירה: ${val}` : "אין לי מידע על שנת יצירה.";
+  }
+
+  if (qLower.includes("אוצר")) {
+    const val = getFactValue(ex, "אוצר/ת");
+    return val ? `אוצר/ת: ${val}` : "אין לי מידע על אוצר/ת.";
+  }
+
+  // --- Fallback: echo the question + show a short snippet (so it feels different) ---
+  const desc = stripHtml(ex.exhibitDescriptionHtml);
+  const short = desc ? desc.slice(0, 220) + (desc.length > 220 ? "…" : "") : "";
+  return `מצב הדגמה: עדיין לא פניתי לשרת.\n\nשאלת: "${qRaw}"\n\nמידע זמין מקומי:\n${short || "אין תיאור זמין."}`;
+}
+
+
   async function ask(question) {
+    if (mockMode) {
+        return { answer: mockAnswer(question), debug: { mock: true } };
+    }
+
     const url = debugMode
       ? "/.netlify/functions/chat?debug=1"
       : "/.netlify/functions/chat";

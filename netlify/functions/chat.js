@@ -1,3 +1,89 @@
+// --- In-memory caches (survive on warm function instances) ---
+const EXHIBITS_TTL_MS = 60 * 1000;        // 1 minute
+const ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const MAX_CACHE_ITEMS = 500;
+
+let exhibitsCache = {
+  baseUrl: null,
+  fetchedAt: 0,
+  data: null,
+};
+
+const answerCache = new Map(); // key -> { answer, ts }
+
+function nowMs() {
+  return Date.now();
+}
+
+function normalizeQuestion(q) {
+  return String(q || "")
+    .trim()
+    .replace(/\u05F3/g, "'") // Hebrew geresh
+    .replace(/\s+/g, " ");
+}
+
+function cacheGet(key) {
+  const v = answerCache.get(key);
+  if (!v) return null;
+  if (nowMs() - v.ts > ANSWER_TTL_MS) {
+    answerCache.delete(key);
+    return null;
+  }
+  return v.answer;
+}
+
+function cacheSet(key, answer) {
+  // simple size cap (drop oldest-ish)
+  if (answerCache.size >= MAX_CACHE_ITEMS) {
+    const firstKey = answerCache.keys().next().value;
+    if (firstKey) answerCache.delete(firstKey);
+  }
+  answerCache.set(key, { answer, ts: nowMs() });
+}
+
+async function getExhibitsData(baseUrl) {
+  if (
+    exhibitsCache.data &&
+    exhibitsCache.baseUrl === baseUrl &&
+    nowMs() - exhibitsCache.fetchedAt < EXHIBITS_TTL_MS
+  ) {
+    return exhibitsCache.data;
+  }
+
+  const res = await fetch(`${baseUrl}/assets/exhibits.json`, { cache: "no-store" });
+  const data = await res.json();
+
+  exhibitsCache = {
+    baseUrl,
+    fetchedAt: nowMs(),
+    data,
+  };
+
+  return data;
+}
+
+function jsonResponse(statusCode, payload) {
+  return {
+    statusCode,
+    headers: {
+      "Content-Type": "application/json",
+      // Don't rely on CDN caching for POST; our cache is in-memory
+      "Cache-Control": "no-store",
+    },
+    body: JSON.stringify(payload),
+  };
+}
+
+function getFactAnswer(exhibit, factKey) {
+  const facts = Array.isArray(exhibit?.facts) ? exhibit.facts : [];
+  const key = String(factKey || "").trim();
+
+  // facts are like "שנת יצירה: 2025"
+  const found = facts.find((f) => String(f).trim().startsWith(`${key}:`));
+  if (!found) return "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+  return String(found).trim();
+}
+
 exports.handler = async (event) => {
   try {
     if (event.httpMethod !== "POST") {
@@ -20,27 +106,51 @@ exports.handler = async (event) => {
       return { statusCode: 500, body: JSON.stringify({ error: "Cannot resolve origin" }) };
     }
 
-    const exhibitsRes = await fetch(`${baseUrl}/assets/exhibits.json`, { cache: "no-store" });
-    const exhibitsData = await exhibitsRes.json();
+    const exhibitsData = await getExhibitsData(baseUrl);
 
     const exhibit = exhibitsData?.exhibits?.[exhibitId];
     if (!exhibit) {
       return { statusCode: 404, body: JSON.stringify({ error: "Exhibit not found" }) };
     }
 
+    const qNorm = normalizeQuestion(question);
+    const cacheKey = `${exhibitId}||${qNorm}`;
+
+    // --- Answer cache (works for ALL questions) ---
+    const cached = cacheGet(cacheKey);
+    if (cached) {
+    return jsonResponse(200, { answer: cached, cached: true });
+    }
+
+    // --- Fast paths (NO OpenAI) ---
+    if (qNorm === "__SUMMARY__") {
+    const exhibitionSummary = exhibitsData?.museum?.exhibitionSummary || "";
+    const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
+    const exhibitSummary = limitChars(fullDesc, 700);
+
+    const answer = exhibitSummary || exhibitionSummary || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+    cacheSet(cacheKey, answer);
+    return jsonResponse(200, { answer });
+    }
+
+    if (qNorm.startsWith("__FACT:")) {
+    const factKey = qNorm.replace("__FACT:", "").replace(/__$/, "").trim();
+    const answer = getFactAnswer(exhibit, factKey);
+    cacheSet(cacheKey, answer);
+    return jsonResponse(200, { answer });
+    }
+
     // ===== Creator-only fast path (NO OpenAI call) =====
     if (isCreatorQuestion(question)) {
-      const creatorName = String(exhibit.creatorName || "").trim();
-      const creatorBio = String(exhibit.creatorBio || "").trim();
+        const creatorName = String(exhibit.creatorName || "").trim();
+        const creatorBio = String(exhibit.creatorBio || "").trim();
 
-      const answer = buildCreatorAnswer(creatorName, creatorBio);
+        const answer = buildCreatorAnswer(creatorName, creatorBio);
 
-      return {
-        statusCode: 200,
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ answer }),
-      };
+        cacheSet(cacheKey, answer);               // ✅ cache it
+        return jsonResponse(200, { answer });     // ✅ consistent response helper
     }
+
     // ================================================
 
     const exhibitionSummary = exhibitsData?.museum?.exhibitionSummary || "";
@@ -110,12 +220,9 @@ ${question}
     }
 
     const answer = extractText(openaiJson) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+    cacheSet(cacheKey, answer);
+    return jsonResponse(200, { answer });
 
-    return {
-      statusCode: 200,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ answer }),
-    };
   } catch (err) {
     return { statusCode: 500, body: JSON.stringify({ error: "Server error", details: String(err) }) };
   }
@@ -125,32 +232,31 @@ function isCreatorQuestion(q) {
   const s = String(q || "").trim();
   if (!s) return false;
 
-  // normalize common variants
   const normalized = s
     .replace(/\u05F3/g, "'")  // Hebrew geresh to '
     .replace(/\s+/g, " ");
 
+  // If the user asks about the exhibition (not the exhibit), don't route to creator fast path
+  if (/תערוכ/i.test(normalized)) return false;
+
   const patterns = [
-    // "Who is the creator"
     /מי\s+היוצר(?:\/ת)?/i,
     /מי\s+היוצרת/i,
     /מי\s+היוצרים/i,
 
-    // "Tell me about the creator" (with/without the /י form)
     /ספר(?:\/י)?\s+לי\s+על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
     /ספר(?:\/י)?\s+לי\s+על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)\s+של\s+המיצג/i,
     /ספר(?:\/י)?\s+לי\s+על\s+היוצר(?:\/ת)?\s+של\s+המיצג/i,
 
-    // "About the creator"
     /על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
     /אודות\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
 
-    // bio
     /ביוגרפ/i,
   ];
 
   return patterns.some((p) => p.test(normalized));
 }
+
 
 
 
