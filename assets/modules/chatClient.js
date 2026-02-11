@@ -1,4 +1,8 @@
+// assets/chatClient.js
+// Comments in English only
+
 import { scrollChatLogToBottom, ensureInputVisibleOnMobile } from "./dom.js";
+import { initTTS, speakText, stopSpeaking } from "./voice.js";
 
 const CLIENT_CACHE_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 
@@ -17,8 +21,15 @@ function makeCacheKey(exhibitId, question) {
   return `${String(exhibitId || "").trim()}||${normalizeQuestion(question)}`;
 }
 
+function supportsTTS() {
+  return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
+}
+
 export function createChatClient({ els, exhibitId, debugMode, mockMode }) {
   const clientCache = new Map(); // key -> { answer, ts }
+
+  // Init TTS once per page
+  initTTS();
 
   function cacheGet(key) {
     const v = clientCache.get(key);
@@ -32,6 +43,36 @@ export function createChatClient({ els, exhibitId, debugMode, mockMode }) {
 
   function cacheSet(key, answer) {
     clientCache.set(key, { answer, ts: nowMs() });
+  }
+
+  function addTtsControls(rowEl, text) {
+    if (!supportsTTS()) return;
+
+    const controls = document.createElement("div");
+    controls.className = "ttsControls";
+
+    const playBtn = document.createElement("button");
+    playBtn.type = "button";
+    playBtn.className = "ttsBtn";
+    playBtn.textContent = "השמע";
+
+    const stopBtn = document.createElement("button");
+    stopBtn.type = "button";
+    stopBtn.className = "ttsBtn ttsBtn--ghost";
+    stopBtn.textContent = "עצור";
+
+    playBtn.addEventListener("click", () => {
+      speakText(text);
+    });
+
+    stopBtn.addEventListener("click", () => {
+      stopSpeaking();
+    });
+
+    controls.appendChild(playBtn);
+    controls.appendChild(stopBtn);
+
+    rowEl.appendChild(controls);
   }
 
   function appendMessage(role, text) {
@@ -48,6 +89,12 @@ export function createChatClient({ els, exhibitId, debugMode, mockMode }) {
 
     row.appendChild(label);
     row.appendChild(bubble);
+
+    // Add TTS controls only for assistant messages
+    if (role === "assistant") {
+      addTtsControls(row, String(text || ""));
+    }
+
     els.chatLog.appendChild(row);
 
     scrollToBottom();
@@ -105,12 +152,20 @@ export function createChatClient({ els, exhibitId, debugMode, mockMode }) {
     const pending = appendMessage("assistant", "רגע…");
     const { answer } = await ask(q);
 
-    pending.querySelector(".bubble").textContent = answer;
+    const bubble = pending.querySelector(".bubble");
+    if (bubble) bubble.textContent = answer;
+
+    // Update TTS handlers to speak the final answer (replace controls)
+    const oldControls = pending.querySelector(".ttsControls");
+    if (oldControls) oldControls.remove();
+    addTtsControls(pending, answer);
+
     scrollToBottom();
     ensureInputVisibleOnMobile(els.q);
   }
 
   function onReset() {
+    stopSpeaking();
     els.chatLog.innerHTML = "";
     appendMessage("assistant", "איפסתי 🙂 אפשר לשאול שוב, או להשתמש בכפתורים למעלה.");
   }

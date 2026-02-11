@@ -350,6 +350,30 @@ a{ color:inherit; }
   box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.12);
 }
 
+/* TTS controls */
+.ttsControls{
+  display:flex;
+  gap:8px;
+  margin-top:10px;
+}
+
+.ttsBtn{
+  border:1px solid var(--border);
+  background:#fff;
+  padding:6px 10px;
+  border-radius:999px;
+  cursor:pointer;
+  font-size:13px;
+}
+
+.ttsBtn:hover{
+  background:#f3f4f6;
+}
+
+.ttsBtn--ghost{
+  background:#fafafa;
+}
+
 @media (max-width: 900px){
   .grid{ grid-template-columns: 1fr; }
   .chat-wrap{ height: 640px; }
