@@ -1,16 +1,43 @@
-// netlify/functions/chat.js
+const { createClient } = require("@supabase/supabase-js");
+
+// --- Supabase client (reuse across warm invocations) ---
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+const supabase =
+  SUPABASE_URL && SUPABASE_SERVICE_ROLE_KEY
+    ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
+    : null;
+
+function getMuseumIdFromBaseUrl(baseUrl) {
+  try {
+    return new URL(baseUrl).hostname; // stable museum id
+  } catch {
+    return "unknown";
+  }
+}
+
+async function trackUsage({ museumId, exhibitId }) {
+  if (!supabase) return;
+
+  const now = new Date();
+  const monthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+
+  const { error } = await supabase.rpc("usage_increment", {
+    p_museum_id: museumId,
+    p_month_key: monthKey,
+    p_exhibit_id: exhibitId || null,
+  });
+
+  if (error) console.log("usage_increment error:", error);
+}
 
 // --- In-memory caches (survive on warm function instances) ---
 const EXHIBITS_TTL_MS = 60 * 1000;        // 1 minute
 const ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const MAX_CACHE_ITEMS = 500;
 
-let exhibitsCache = {
-  baseUrl: null,
-  fetchedAt: 0,
-  data: null,
-};
-
+let exhibitsCache = { baseUrl: null, fetchedAt: 0, data: null };
 const answerCache = new Map(); // key -> { answer, ts }
 
 function nowMs() {
@@ -55,12 +82,7 @@ async function getExhibitsData(baseUrl) {
   const res = await fetch(`${baseUrl}/assets/exhibits.json`, { cache: "no-store" });
   const data = await res.json();
 
-  exhibitsCache = {
-    baseUrl,
-    fetchedAt: nowMs(),
-    data,
-  };
-
+  exhibitsCache = { baseUrl, fetchedAt: nowMs(), data };
   return data;
 }
 
@@ -106,7 +128,6 @@ function getFactAnswer(exhibit, factKey) {
   const facts = Array.isArray(exhibit?.facts) ? exhibit.facts : [];
   const key = String(factKey || "").trim();
 
-  // facts are like "שנת יצירה: 2025"
   const found = facts.find((f) => String(f).trim().startsWith(`${key}:`));
   if (!found) return "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
   return String(found).trim();
@@ -116,22 +137,16 @@ function isCreatorQuestion(q) {
   const s = String(q || "").trim();
   if (!s) return false;
 
-  const normalized = s
-    .replace(/\u05F3/g, "'")
-    .replace(/\s+/g, " ");
-
-  // If user asks about the exhibition (not the exhibit), don't route to creator fast path
+  const normalized = s.replace(/\u05F3/g, "'").replace(/\s+/g, " ");
   if (/תערוכ/i.test(normalized)) return false;
 
   const patterns = [
     /מי\s+היוצר(?:\/ת)?/i,
     /מי\s+היוצרת/i,
     /מי\s+היוצרים/i,
-
     /ספר(?:\/י)?\s+לי\s+על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
     /על\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
     /אודות\s+(?:היוצר(?:\/ת)?|היוצרת|היוצרים|יוצר\/ת)/i,
-
     /ביוגרפ/i,
   ];
 
@@ -152,14 +167,12 @@ function buildCreatorAnswer(creatorName, creatorBio) {
   return `${bio}${sep}${suffix}`;
 }
 
-// Accept both command-style and plain Hebrew button text
 function mapPlainButtonToCommand(qNorm) {
   if (qNorm === "תקציר קצר") return "__SUMMARY__";
   if (qNorm === "טכניקות") return "__FACT:טכניקות__";
   if (qNorm === "חומרים") return "__FACT:חומרים__";
   if (qNorm === "שנת יצירה") return "__FACT:שנת יצירה__";
   if (qNorm === "אוצר/ת") return "__FACT:אוצר/ת__";
-  // "מי היוצר/ת" stays natural language – creator fast path will catch it
   return qNorm;
 }
 
@@ -169,6 +182,7 @@ exports.handler = async (event) => {
       return jsonResponse(405, { error: "Method not allowed" });
     }
 
+    const debug = event.queryStringParameters?.debug === "1";
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return jsonResponse(500, { error: "Missing OPENAI_API_KEY" });
@@ -179,14 +193,21 @@ exports.handler = async (event) => {
       return jsonResponse(400, { error: "Missing exhibitId or question" });
     }
 
-    const qNormRaw = normalizeQuestion(question);
-    const qNorm = mapPlainButtonToCommand(qNormRaw);
-
     const origin = event.headers.origin || event.headers.referer || "";
     const baseUrl = origin ? new URL(origin).origin : null;
     if (!baseUrl) {
       return jsonResponse(500, { error: "Cannot resolve origin" });
     }
+
+    // ✅ Track usage once per valid question (fire-and-forget, doesn't block response)
+    const museumId = getMuseumIdFromBaseUrl(baseUrl);
+    trackUsage({ museumId, exhibitId }).catch((e) => console.log("trackUsage failed:", e));
+    if (debug) {
+      await trackUsage({ museumId, exhibitId });
+    }
+
+    const qNormRaw = normalizeQuestion(question);
+    const qNorm = mapPlainButtonToCommand(qNormRaw);
 
     const exhibitsData = await getExhibitsData(baseUrl);
     const exhibit = exhibitsData?.exhibits?.[exhibitId];
@@ -203,13 +224,14 @@ exports.handler = async (event) => {
     // --- Fast paths (NO OpenAI) ---
     if (qNorm === "__SUMMARY__") {
       const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
-      const answer = limitChars(fullDesc, 700) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+      const answer =
+        limitChars(fullDesc, 700) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
       cacheSet(cacheKey, answer);
       return jsonResponse(200, { answer, fast: "summary" });
     }
 
     if (qNorm.startsWith("__FACT:") && qNorm.endsWith("__")) {
-      const factKey = qNorm.replace("__FACT:", "").replace("__", "").trim();
+      const factKey = qNorm.replace(/^__FACT:/, "").replace(/__$/, "").trim();
       const answer = getFactAnswer(exhibit, factKey);
       cacheSet(cacheKey, answer);
       return jsonResponse(200, { answer, fast: "fact" });
@@ -271,7 +293,7 @@ ${qNormRaw}
     const openaiRes = await fetch("https://api.openai.com/v1/responses", {
       method: "POST",
       headers: {
-        "Authorization": `Bearer ${apiKey}`,
+        Authorization: `Bearer ${apiKey}`,
         "Content-Type": "application/json",
       },
       body: JSON.stringify({
@@ -289,10 +311,10 @@ ${qNormRaw}
       return jsonResponse(500, { error: "OpenAI error", details: openaiJson });
     }
 
-    const answer = extractText(openaiJson) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+    const answer =
+      extractText(openaiJson) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
     cacheSet(cacheKey, answer);
     return jsonResponse(200, { answer });
-
   } catch (err) {
     return jsonResponse(500, { error: "Server error", details: String(err) });
   }

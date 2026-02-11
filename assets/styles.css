@@ -1,3 +1,6 @@
+/* assets/styles.css */
+/* Comments in English only */
+
 :root{
   --bg:#f6f7fb;
   --card:#ffffff;
@@ -37,6 +40,12 @@ a{ color:inherit; }
   margin-bottom:16px;
 }
 
+.topbar-actions{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
 .brand{
   display:flex;
   align-items:center;
@@ -65,10 +74,6 @@ a{ color:inherit; }
   gap:18px;
 }
 
-@media (max-width: 900px){
-  .grid{ grid-template-columns: 1fr; }
-}
-
 .card{
   background:var(--card);
   border:1px solid var(--border);
@@ -90,6 +95,18 @@ a{ color:inherit; }
   display:block;
 }
 
+.hero.hero--exhibition{
+  aspect-ratio:auto;
+  height:280px;
+  max-height:280px;
+}
+
+.hero.hero--exhibition img{
+  width:100%;
+  height:100%;
+  object-fit:cover;
+}
+
 .content{
   padding:18px;
 }
@@ -105,6 +122,12 @@ a{ color:inherit; }
   margin:0 0 14px;
 }
 
+.section-title{
+  font-weight:900;
+  margin: 18px 0 10px;
+}
+
+/* Tags */
 .tags{
   display:flex;
   flex-wrap:wrap;
@@ -125,11 +148,7 @@ a{ color:inherit; }
   background:#f3f4f6;
 }
 
-.section-title{
-  font-weight:900;
-  margin: 18px 0 10px;
-}
-
+/* Creator */
 .creator{
   display:flex;
   align-items:center;
@@ -145,14 +164,90 @@ a{ color:inherit; }
   border:1px solid var(--border);
 }
 
+/* Exhibits list */
+.exhibitRow{
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.exhibitLink{
+  text-decoration:none;
+  display:block;
+}
+
+/* Usage pill (new) */
+.usage-pill{
+  display:flex;
+  flex-direction:column;
+  gap:6px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  border:1px solid rgba(0,0,0,0.08);
+  background: rgba(255,255,255,0.75);
+  backdrop-filter: blur(6px);
+}
+
+.usage-pill__label{
+  font-size:12px;
+  color: var(--muted);
+  font-weight:700;
+}
+
+.usage-pill__value{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  font-weight:900;
+  font-size:18px;
+}
+
+.usage-pill__sep{
+  color: var(--muted);
+}
+
+/* Usage breakdown list */
+.usageBreakdown{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+  margin-top:8px;
+}
+
+.usageHeader, .usageRow{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+}
+
+.usageHeader{
+  padding-bottom:8px;
+  border-bottom:1px solid var(--border);
+  color:var(--muted);
+  font-size:14px;
+}
+
+.usageRow{
+  padding:10px 0;
+  border-bottom:1px solid var(--border);
+}
+
+.usageRow__title{
+  font-weight:800;
+}
+
+.usageRow__count{
+  font-weight:900;
+  min-width:52px;
+  text-align:left; /* number alignment */
+}
+
+/* ===== Chat (exhibit.html) - restore full styling ===== */
+
 .chat-wrap{
   display:flex;
   flex-direction:column;
   height: 720px;
-}
-
-@media (max-width: 900px){
-  .chat-wrap{ height: 640px; }
 }
 
 .chat-header{
@@ -167,6 +262,15 @@ a{ color:inherit; }
 
 .chat-header .title{
   font-weight:900;
+}
+
+.reset-btn{
+  background:transparent;
+  border:1px solid rgba(255,255,255,.35);
+  color:#fff;
+  border-radius:10px;
+  padding:8px 10px;
+  cursor:pointer;
 }
 
 .chat-log{
@@ -207,6 +311,7 @@ a{ color:inherit; }
   display:flex;
   gap:10px;
   background:#fff;
+  align-items:center;
 }
 
 .chat-input textarea{
@@ -218,6 +323,8 @@ a{ color:inherit; }
   font-size:14px;
   outline:none;
   min-height:44px;
+  direction: rtl;
+  text-align:right;
 }
 
 .chat-input button{
@@ -230,54 +337,24 @@ a{ color:inherit; }
   cursor:pointer;
 }
 
-.reset-btn{
-  background:transparent;
-  border:1px solid rgba(255,255,255,.35);
-  color:#fff;
-  border-radius:10px;
-  padding:8px 10px;
-  cursor:pointer;
-}
-
 /* Mic button */
 .iconBtn{
-  border:1px solid var(--border);
-  background:#fff;
-  color:#111827;
-  font-weight:700;
+  border:1px solid var(--border) !important;
+  background:#fff !important;
+  color:#111827 !important;
+  font-weight:700 !important;
 }
 
 .iconBtn.recording{
-  border-color:#ef4444;
+  border-color:#ef4444 !important;
   box-shadow: 0 0 0 6px rgba(239, 68, 68, 0.12);
 }
 
-/* Index list */
-.exhibitRow{
-  padding: 10px 0;
-  border-bottom: 1px solid #e5e7eb;
-}
-
-.exhibitLink{
-  text-decoration:none;
-  display:block;
-}
-/* Compact exhibition hero (index page) */
-.hero.hero--exhibition{
-  aspect-ratio: auto;
-  max-height: 280px;     /* desktop limit */
-  height: 280px;
-}
-
 @media (max-width: 900px){
+  .grid{ grid-template-columns: 1fr; }
+  .chat-wrap{ height: 640px; }
   .hero.hero--exhibition{
-    height: 180px;       /* mobile limit */
-    max-height: 180px;
+    height:180px;
+    max-height:180px;
   }
-}
-
-.hero.hero--exhibition img{
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
 }
