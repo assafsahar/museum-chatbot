@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>המדריך הדיגיטלי החכם | Game Factory</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #e67e22;
+            --bg-light: #f9f9f9;
+            --text-color: #333;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1100px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        /* Logo & Header Styling */
+        header {
+            background: var(--primary-color);
+            color: white;
+            padding: 3.5rem 0;
+            text-align: center;
+        }
+
+        .logo-container {
+            margin-bottom: 1.5rem;
+            display: inline-block;
+        }
+
+        .main-logo {
+            max-width: 200px;
+            height: auto;
+            /* אפקט ההילה שגורם ללוגו לבלוט */
+            filter: drop-shadow(0px 0px 10px rgba(255, 255, 255, 0.5));
+            transition: transform 0.3s ease;
+        }
+
+        .main-logo:hover {
+            transform: scale(1.05);
+            filter: drop-shadow(0px 0px 15px rgba(255, 255, 255, 0.7));
+        }
+
+        header h1 { color: white; font-size: 2.8rem; margin: 0.5rem 0; }
+        header p { font-size: 1.3rem; opacity: 0.9; max-width: 800px; margin: 0 auto 2.5rem auto; }
+
+        .btn {
+            display: inline-block;
+            background: var(--accent-color);
+            color: white;
+            padding: 14px 35px;
+            text-decoration: none;
+            border-radius: 5px;
+            font-weight: bold;
+            transition: 0.3s;
+            border: none;
+            font-size: 1.1rem;
+        }
+
+        .btn:hover { background: #d35400; transform: translateY(-2px); }
+
+        /* Content Sections */
+        section { padding: 4rem 0; border-bottom: 1px solid #eee; }
+        .row { display: flex; align-items: center; gap: 3rem; flex-wrap: wrap; }
+        .col { flex: 1; min-width: 320px; }
+
+        .main-img {
+            width: 100%;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.1);
+            max-height: 450px;
+            object-fit: cover;
+        }
+
+        .features-list { list-style: none; padding: 0; }
+        .features-list li { margin-bottom: 1.2rem; padding-right: 2rem; position: relative; font-size: 1.05rem; }
+        .features-list li::before { 
+            content: "✔"; 
+            color: var(--accent-color); 
+            position: absolute; 
+            right: 0; 
+            font-weight: bold; 
+            font-size: 1.2rem;
+        }
+
+        /* Steps */
+        .steps-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 2rem;
+            margin-top: 3rem;
+        }
+
+        .step-card {
+            background: var(--bg-light);
+            padding: 2.5rem;
+            border-radius: 12px;
+            border: 1px solid #e0e0e0;
+            text-align: center;
+        }
+
+        .step-number {
+            background: var(--accent-color);
+            color: white;
+            width: 50px; height: 50px;
+            border-radius: 50%;
+            display: flex; align-items: center; justify-content: center;
+            margin: 0 auto 1.5rem auto;
+            font-weight: bold;
+            font-size: 1.3rem;
+        }
+
+        /* Footer & Contact */
+        .contact-info { background: #f4f4f4; text-align: center; padding: 3rem 0; }
+        .contact-details { display: flex; justify-content: center; gap: 3rem; flex-wrap: wrap; margin-top: 2rem; font-size: 1.1rem; }
+        .contact-item a { color: var(--primary-color); text-decoration: none; font-weight: bold; }
+
+        footer { 
+            background: #222; 
+            color: #aaa; 
+            text-align: center; 
+            padding: 2.5rem 0; 
+            font-size: 0.95rem; 
+        }
+        .footer-studio { color: white; display: block; margin-bottom: 0.8rem; font-weight: bold; font-size: 1.1rem; }
+
+        @media (max-width: 768px) { 
+            header h1 { font-size: 2rem; }
+            .row { flex-direction: column; text-align: center; } 
+            .features-list li { padding-right: 0; padding-top: 1.5rem; }
+            .features-list li::before { right: 50%; transform: translateX(50%); top: 0; }
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <div class="logo-container">
+                <img src="./assets/game-factory-logo.png" alt="Game Factory Logo" class="main-logo">
+            </div>
+            <h1>המדריך הדיגיטלי החכם למוזיאונים וגלריות</h1>
+            <p>הפכו את חווית הביקור למרתקת, אינטראקטיבית ונגישה לכולם בעזרת בינה מלאכותית מתקדמת.</p>
+            <a href="#contact" class="btn">דברו איתנו</a>
+        </div>
+    </header>
+
+    <section>
+        <div class="container">
+            <div class="row">
+                <div class="col">
+                    <h2>מה זה נותן למבקר?</h2>
+                    <ul class="features-list">
+                        <li><strong>צ'טבוט אישי וחכם:</strong> המבקר יכול לשאול שאלות חופשיות ולקבל תשובות מיידיות ומעשירות על כל יצירה.</li>
+                        <li><strong>אינטראקציה טבעית:</strong> ניתן לשוחח עם המדריך גם בהקלדה וגם בדיבור (Voice), ממש כמו בשיחה עם אדם.</li>
+                        <li><strong>עושר של מידע:</strong> גישה לסיפורים שמאחורי הקלעים, ביוגרפיות של האמנים והקשרים היסטוריים.</li>
+                        <li><strong>נגיש מכל מכשיר:</strong> אין צורך להוריד אפליקציה, פשוט סורקים ומתחילים.</li>
+                    </ul>
+                </div>
+                <div class="col">
+                    <img src="./assets/visitor-chatbot.jpg" class="main-img" alt="חוויית מבקר אינטראקטיבית">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section style="background-color: var(--bg-light);">
+        <div class="container">
+            <div class="row" style="flex-direction: row-reverse;">
+                <div class="col">
+                    <h2>מה זה נותן למוזיאון או לגלריה?</h2>
+                    <ul class="features-list">
+                        <li><strong>שדרוג חווית המבקר:</strong> הופכים ביקור פסיבי למסע אקטיבי ומרתק.</li>
+                        <li><strong>יישום מהיר וקל:</strong> פתרון מדיד ומבוקר שאינו דורש משאבי תפעול מורכבים או פרויקט הקמה מעיק.</li>
+                        <li><strong>תובנות ודאטה:</strong> קבלת נתונים על כמות השאלות שנשאלו בכל מיצג.</li>
+                        <li><strong>חסכון בכוח אדם:</strong> מענה דיגיטלי איכותי שזמין 24/7 לכל מבקר.</li>
+                    </ul>
+                </div>
+                <div class="col">
+                    <img src="./assets/qr-code-display.jpg" class="main-img" alt="ניהול תערוכה חכם">
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="container">
+            <h2 style="text-align: center;">איך מתחילים?</h2>
+            <div class="steps-grid">
+                <div class="step-card">
+                    <div class="step-number">1</div>
+                    <h3>אפיון והתאמה</h3>
+                    <p>אתם שולחים לנו את המידע על היצירות, ואנחנו מזינים אותו למערכת עבורכם.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">2</div>
+                    <h3>הטמעת קודי QR</h3>
+                    <p>אנחנו שולחים לכם קודי QR מוכנים לכל המיצגים, ואתם מציבים אותם ליד היצירות.</p>
+                </div>
+                <div class="step-card">
+                    <div class="step-number">3</div>
+                    <h3>השקה שקטה</h3>
+                    <p>המבקרים מתחילים להשתמש, המערכת לומדת, והצוות נהנה מניהול פשוט ושוטף.</p>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <section id="contact" class="contact-info">
+        <div class="container">
+            <h2>פרטי התקשרות</h2>
+            <div class="contact-details">
+                <div class="contact-item">
+                    <strong>מייל:</strong><br>
+                    <a href="mailto:studio.gamefactory@gmail.com">studio.gamefactory@gmail.com</a>
+                </div>
+                <div class="contact-item">
+                    <strong>ענת:</strong><br>
+                    052-3403206
+                </div>
+                <div class="contact-item">
+                    <strong>אסף:</strong><br>
+                    054-4850233
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer>
+        <span class="footer-studio">Game Factory - חוויות אינטראקטיביות דיגיטליות</span>
+        <p>&copy; 2026 המדריך הדיגיטלי החכם. כל הזכויות שמורות.</p>
+    </footer>
+
+</body>
+</html>

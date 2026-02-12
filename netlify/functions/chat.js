@@ -1,3 +1,4 @@
+// netlify/functions/chat.js
 const { createClient } = require("@supabase/supabase-js");
 
 // --- Supabase client (reuse across warm invocations) ---
@@ -9,6 +10,12 @@ const supabase =
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
+// --- Pricing (estimate) ---
+// Set these in Netlify env to match your actual model pricing.
+// Defaults below are for gpt-4o-mini (standard) at time of writing.
+const OPENAI_INPUT_USD_PER_1M = Number(process.env.OPENAI_INPUT_USD_PER_1M || 0.25);
+const OPENAI_OUTPUT_USD_PER_1M = Number(process.env.OPENAI_OUTPUT_USD_PER_1M || 1.0);
+
 function getMuseumIdFromBaseUrl(baseUrl) {
   try {
     return new URL(baseUrl).hostname; // stable museum id
@@ -17,23 +24,53 @@ function getMuseumIdFromBaseUrl(baseUrl) {
   }
 }
 
-async function trackUsage({ museumId, exhibitId }) {
+function getMonthKeyUtc() {
+  const now = new Date();
+  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function estimateOpenAiCostUsd({ inputTokens, outputTokens }) {
+  const inCost = (Number(inputTokens || 0) / 1_000_000) * OPENAI_INPUT_USD_PER_1M;
+  const outCost = (Number(outputTokens || 0) / 1_000_000) * OPENAI_OUTPUT_USD_PER_1M;
+  const total = inCost + outCost;
+  return Number.isFinite(total) ? total : 0;
+}
+
+async function trackUsage({
+  museumId,
+  monthKey,
+  exhibitId,
+  exhibitionId,
+  mode, // 'openai' | 'fast'
+  cached,
+  inputTokens,
+  outputTokens,
+  totalTokens,
+  openaiCostUsd,
+  fnMs,
+}) {
   if (!supabase) return;
 
-  const now = new Date();
-  const monthKey = `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
-
-  const { error } = await supabase.rpc("usage_increment", {
+  const payload = {
     p_museum_id: museumId,
     p_month_key: monthKey,
     p_exhibit_id: exhibitId || null,
-  });
+    p_exhibition_id: exhibitionId || "default_exhibition",
+    p_mode: mode || "openai",
+    p_input_tokens: Number(inputTokens || 0),
+    p_output_tokens: Number(outputTokens || 0),
+    p_total_tokens: Number(totalTokens || 0),
+    p_openai_cost_usd: Number(openaiCostUsd || 0),
+    p_fn_ms: Number(fnMs || 0),
+    p_cached: !!cached,
+  };
 
+  const { error } = await supabase.rpc("usage_increment", payload);
   if (error) console.log("usage_increment error:", error);
 }
 
 // --- In-memory caches (survive on warm function instances) ---
-const EXHIBITS_TTL_MS = 60 * 1000;        // 1 minute
+const EXHIBITS_TTL_MS = 60 * 1000; // 1 minute
 const ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
 const MAX_CACHE_ITEMS = 500;
 
@@ -124,6 +161,14 @@ function extractText(openaiJson) {
   return "";
 }
 
+function getUsageFromOpenAiResponse(openaiJson) {
+  const usage = openaiJson?.usage || {};
+  const inputTokens = Number(usage.input_tokens || 0);
+  const outputTokens = Number(usage.output_tokens || 0);
+  const totalTokens = Number(usage.total_tokens || inputTokens + outputTokens || 0);
+  return { inputTokens, outputTokens, totalTokens };
+}
+
 function getFactAnswer(exhibit, factKey) {
   const facts = Array.isArray(exhibit?.facts) ? exhibit.facts : [];
   const key = String(factKey || "").trim();
@@ -177,18 +222,28 @@ function mapPlainButtonToCommand(qNorm) {
 }
 
 exports.handler = async (event) => {
+  const t0 = Date.now();
+
+  const safeTrack = (args) => {
+    const fnMs = Date.now() - t0;
+    trackUsage({ ...args, fnMs }).catch((e) => console.log("trackUsage failed:", e));
+  };
+
   try {
     if (event.httpMethod !== "POST") {
       return jsonResponse(405, { error: "Method not allowed" });
     }
 
-    const debug = event.queryStringParameters?.debug === "1";
     const apiKey = process.env.OPENAI_API_KEY;
     if (!apiKey) {
       return jsonResponse(500, { error: "Missing OPENAI_API_KEY" });
     }
 
-    const { exhibitId, question } = JSON.parse(event.body || "{}");
+    const body = JSON.parse(event.body || "{}");
+    const exhibitId = body.exhibitId;
+    const question = body.question;
+    const exhibitionId = body.exhibitionId || "default_exhibition";
+
     if (!exhibitId || !question) {
       return jsonResponse(400, { error: "Missing exhibitId or question" });
     }
@@ -199,12 +254,8 @@ exports.handler = async (event) => {
       return jsonResponse(500, { error: "Cannot resolve origin" });
     }
 
-    // ✅ Track usage once per valid question (fire-and-forget, doesn't block response)
     const museumId = getMuseumIdFromBaseUrl(baseUrl);
-    trackUsage({ museumId, exhibitId }).catch((e) => console.log("trackUsage failed:", e));
-    if (debug) {
-      await trackUsage({ museumId, exhibitId });
-    }
+    const monthKey = getMonthKeyUtc();
 
     const qNormRaw = normalizeQuestion(question);
     const qNorm = mapPlainButtonToCommand(qNormRaw);
@@ -216,9 +267,22 @@ exports.handler = async (event) => {
     }
 
     const cacheKey = `${exhibitId}||${qNorm}`;
-    const cached = cacheGet(cacheKey);
-    if (cached) {
-      return jsonResponse(200, { answer: cached, cached: true });
+    const cachedAnswer = cacheGet(cacheKey);
+    if (cachedAnswer) {
+      safeTrack({
+        museumId,
+        monthKey,
+        exhibitId,
+        exhibitionId,
+        mode: "fast",
+        cached: true,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        openaiCostUsd: 0,
+      });
+
+      return jsonResponse(200, { answer: cachedAnswer, cached: true });
     }
 
     // --- Fast paths (NO OpenAI) ---
@@ -226,14 +290,44 @@ exports.handler = async (event) => {
       const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
       const answer =
         limitChars(fullDesc, 700) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+
       cacheSet(cacheKey, answer);
+
+      safeTrack({
+        museumId,
+        monthKey,
+        exhibitId,
+        exhibitionId,
+        mode: "fast",
+        cached: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        openaiCostUsd: 0,
+      });
+
       return jsonResponse(200, { answer, fast: "summary" });
     }
 
     if (qNorm.startsWith("__FACT:") && qNorm.endsWith("__")) {
       const factKey = qNorm.replace(/^__FACT:/, "").replace(/__$/, "").trim();
       const answer = getFactAnswer(exhibit, factKey);
+
       cacheSet(cacheKey, answer);
+
+      safeTrack({
+        museumId,
+        monthKey,
+        exhibitId,
+        exhibitionId,
+        mode: "fast",
+        cached: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        openaiCostUsd: 0,
+      });
+
       return jsonResponse(200, { answer, fast: "fact" });
     }
 
@@ -241,7 +335,22 @@ exports.handler = async (event) => {
       const creatorName = String(exhibit.creatorName || "").trim();
       const creatorBio = String(exhibit.creatorBio || "").trim();
       const answer = buildCreatorAnswer(creatorName, creatorBio);
+
       cacheSet(cacheKey, answer);
+
+      safeTrack({
+        museumId,
+        monthKey,
+        exhibitId,
+        exhibitionId,
+        mode: "fast",
+        cached: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        openaiCostUsd: 0,
+      });
+
       return jsonResponse(200, { answer, fast: "creator" });
     }
 
@@ -308,13 +417,47 @@ ${qNormRaw}
 
     const openaiJson = await openaiRes.json();
     if (!openaiRes.ok) {
+      safeTrack({
+        museumId,
+        monthKey,
+        exhibitId,
+        exhibitionId,
+        mode: "openai",
+        cached: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        openaiCostUsd: 0,
+      });
+
       return jsonResponse(500, { error: "OpenAI error", details: openaiJson });
     }
 
+    const { inputTokens, outputTokens, totalTokens } = getUsageFromOpenAiResponse(openaiJson);
+    const openaiCostUsd = estimateOpenAiCostUsd({ inputTokens, outputTokens });
+
     const answer =
       extractText(openaiJson) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+
     cacheSet(cacheKey, answer);
-    return jsonResponse(200, { answer });
+
+    safeTrack({
+      museumId,
+      monthKey,
+      exhibitId,
+      exhibitionId,
+      mode: "openai",
+      cached: false,
+      inputTokens,
+      outputTokens,
+      totalTokens,
+      openaiCostUsd,
+    });
+
+    return jsonResponse(200, {
+      answer,
+      usage: { inputTokens, outputTokens, totalTokens, openaiCostUsd },
+    });
   } catch (err) {
     return jsonResponse(500, { error: "Server error", details: String(err) });
   }
