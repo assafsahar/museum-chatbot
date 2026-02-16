@@ -25,54 +25,82 @@
         .container {
             max-width: 1000px;
             margin: 0 auto;
-            padding: 0 20px;
+            padding: 0 15px;
         }
 
         header {
             background: var(--primary-color);
             color: white;
-            padding: 3rem 0;
+            padding: 2.5rem 0;
             text-align: center;
             border-bottom: 5px solid var(--accent-color);
         }
 
         .main-logo {
-            max-width: 180px;
+            max-width: 160px;
             height: auto;
-            filter: drop-shadow(0px 0px 10px rgba(255, 255, 255, 0.5));
+            filter: drop-shadow(0px 0px 8px rgba(255, 255, 255, 0.5));
             margin-bottom: 1rem;
         }
 
-        header h1 { margin: 0; font-size: 2.2rem; }
+        header h1 { margin: 0; font-size: 1.8rem; padding: 0 10px; }
 
-        .section-title { text-align: center; margin: 3rem 0; }
-        .section-title h2 { font-size: 2rem; color: var(--primary-color); position: relative; padding-bottom: 10px; }
-        .section-title h2::after { content: ''; width: 60px; height: 3px; background: var(--accent-color); position: absolute; bottom: 0; right: 50%; transform: translateX(50%); }
+        .section-title { text-align: center; margin: 2.5rem 0; }
+        .section-title h2 { font-size: 1.8rem; color: var(--primary-color); position: relative; padding-bottom: 10px; }
+        .section-title h2::after { content: ''; width: 50px; height: 3px; background: var(--accent-color); position: absolute; bottom: 0; right: 50%; transform: translateX(50%); }
 
-        .setup-box { background: var(--white); border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 4rem; }
-        .setup-header { background: #f8f9fa; padding: 1.5rem 2rem; border-bottom: 1px solid #eee; }
-        .setup-content { padding: 2rem; display: flex; flex-wrap: wrap; gap: 2rem; align-items: center; }
-        .setup-table { flex: 1; min-width: 300px; border-collapse: collapse; }
-        .setup-table td { padding: 15px; border-bottom: 1px solid #eee; font-size: 1.1rem; }
+        /* Setup Box - Mobile Friendly */
+        .setup-box { background: var(--white); border-radius: 12px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 3rem; }
+        .setup-header { background: #f8f9fa; padding: 1.2rem; border-bottom: 1px solid #eee; text-align: center; }
+        .setup-content { padding: 1.5rem; display: flex; flex-direction: column; gap: 1.5rem; }
+        
+        .setup-table { width: 100%; border-collapse: collapse; }
+        .setup-table td { padding: 12px; border-bottom: 1px solid #eee; font-size: 1rem; }
         .price-tag { font-weight: bold; color: var(--primary-color); text-align: left; }
-        .setup-details { flex: 1; min-width: 300px; background: #fdfaf7; padding: 1.5rem; border-right: 4px solid var(--accent-color); border-radius: 4px; }
+        
+        .setup-details { background: #fdfaf7; padding: 1.2rem; border-right: 4px solid var(--accent-color); border-radius: 4px; }
+        .setup-details ul { padding-right: 1.5rem; margin: 0; font-size: 0.95rem; }
 
-        .plans-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; margin-bottom: 4rem; }
-        .plan-card { background: var(--white); padding: 2.5rem 2rem; border-radius: 15px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.05); border: 1px solid #eee; }
-        .plan-card.featured { border: 2px solid var(--accent-color); transform: scale(1.05); position: relative; }
-        .featured-badge { position: absolute; top: -15px; right: 50%; transform: translateX(50%); background: var(--accent-color); color: white; padding: 4px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; }
-        .plan-name { font-size: 1.5rem; font-weight: bold; color: var(--primary-color); }
-        .plan-price { font-size: 2.5rem; font-weight: bold; margin: 1rem 0; }
-        .plan-price span { font-size: 1rem; font-weight: normal; color: #777; }
+        /* Plans Grid - Responsive */
+        .plans-grid { display: flex; flex-direction: column; gap: 1.5rem; margin-bottom: 3rem; }
+        
+        .plan-card { 
+            background: var(--white); 
+            padding: 2rem 1.5rem; 
+            border-radius: 12px; 
+            text-align: center; 
+            box-shadow: 0 5px 15px rgba(0,0,0,0.05); 
+            border: 1px solid #eee;
+            position: relative;
+        }
 
-        .plan-features { list-style: none; padding: 0; margin: 2rem 0; text-align: right; }
-        .plan-features li { padding: 8px 0; border-bottom: 1px solid #f9f9f9; font-size: 0.95rem; }
-        .plan-features li::before { content: '●'; color: var(--accent-color); margin-left: 10px; font-size: 0.8rem; }
+        .plan-card.featured { border: 2px solid var(--accent-color); }
+        .featured-badge { 
+            position: absolute; top: -12px; right: 50%; transform: translateX(50%); 
+            background: var(--accent-color); color: white; padding: 3px 12px; 
+            border-radius: 20px; font-size: 0.75rem; font-weight: bold; 
+        }
 
-        .addons { background: #2c3e50; color: white; padding: 1.5rem; border-radius: 10px; text-align: center; margin-bottom: 4rem; }
-        .footer-note { text-align: center; padding: 2rem 0; color: #777; font-size: 0.9rem; border-top: 1px solid #ddd; }
+        .plan-name { font-size: 1.3rem; font-weight: bold; color: var(--primary-color); }
+        .plan-price { font-size: 2.2rem; font-weight: bold; margin: 0.8rem 0; color: var(--text-color); }
+        .plan-price span { font-size: 0.9rem; font-weight: normal; color: #777; }
 
-        @media (max-width: 768px) { .plan-card.featured { transform: scale(1); } .setup-content { flex-direction: column; } }
+        .plan-features { list-style: none; padding: 0; margin: 1.5rem 0; text-align: right; }
+        .plan-features li { padding: 8px 0; border-bottom: 1px solid #f9f9f9; font-size: 0.9rem; }
+        .plan-features li::before { content: '●'; color: var(--accent-color); margin-left: 8px; font-size: 0.7rem; }
+
+        .addons { background: #2c3e50; color: white; padding: 1.2rem; border-radius: 10px; text-align: center; margin-bottom: 3rem; font-size: 0.9rem; }
+        .footer-note { text-align: center; padding: 1.5rem 0; color: #777; font-size: 0.85rem; border-top: 1px solid #ddd; }
+
+        /* Desktop Adjustments */
+        @media (min-width: 768px) {
+            header h1 { font-size: 2.2rem; }
+            .setup-content { flex-direction: row; align-items: flex-start; }
+            .plans-grid { flex-direction: row; align-items: stretch; }
+            .plan-card { flex: 1; }
+            .plan-card.featured { transform: scale(1.05); z-index: 10; }
+            .section-title h2 { font-size: 2rem; }
+        }
     </style>
 </head>
 <body>
@@ -100,7 +128,7 @@
                     <tr><td>עד 100 מיצגים</td><td class="price-tag">7,500 ₪</td></tr>
                 </table>
                 <div class="setup-details">
-                    <ul style="padding-right: 20px; margin: 0;">
+                    <ul style="margin: 0;">
                         <li>פתיחת מוזיאון ותערוכה במערכת</li>
                         <li>הזנת תוכן ויצירת מיצגים</li>
                         <li>הפקת קודי QR כתמונה לכל מיצג</li>
@@ -143,20 +171,20 @@
                 <div class="plan-price">990 ₪<span>/חודש</span></div>
                 <ul class="plan-features">
                     <li>עד 5,000 שאלות בחודש</li>
-                    <li>התחייבות למענה (SLA) תוך 4 שעות עסקים</li>
+                    <li>התחייבות למענה תוך 4 שעות עסקים</li>
                     <li>שיחת סטטוס חודשית קצרה על תפעול</li>
-                    <li>ליווי אישי מול גורמי מקצוע במוזיאון</li>
+                    <li>ליווי אישי מול גורמי מקצוע</li>
                 </ul>
             </div>
         </div>
 
         <div class="addons">
-            <strong>הרחבות שימוש:</strong> &nbsp;&nbsp; 
-            תוספת 1,000 שאלות: 290 ₪ &nbsp; | &nbsp; תוספת 5,000 שאלות: 990 ₪
+            <strong>הרחבות שימוש:</strong><br> 
+            תוספת 1,000 שאלות: 290 ₪ | תוספת 5,000 שאלות: 990 ₪
         </div>
 
         <div class="footer-note">
-            <p>המחירים אינם כוללים מע"מ | גיים פקטורי - חוויות אינטראקטיביות דיגיטליות 2026</p>
+            <p>המחירים אינם כוללים מע"מ | גיים פקטורי 2026</p>
         </div>
     </div>
 
