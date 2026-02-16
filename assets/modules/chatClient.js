@@ -122,6 +122,16 @@ export function createChatClient({
     scrollChatLogToBottom(els.chatLog);
   }
 
+  function formatServerError(json) {
+    // Prefer server-provided details to make debugging easy
+    const details = String(json?.details || "").trim();
+    const error = String(json?.error || "").trim();
+
+    if (details) return `שגיאה: ${details}`;
+    if (error) return `שגיאה: ${error}`;
+    return "שגיאת רשת. נסה/י שוב.";
+  }
+
   async function ask(question) {
     const qNorm = normalizeQuestion(question);
 
@@ -148,18 +158,27 @@ export function createChatClient({
       museumId: normId(museumId),
       exhibitionId: normId(exhibitionId),
       question: qNorm,
+      baseUrl: window.location.origin, // CHANGE: make localhost/prod fetch reliable
     };
 
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
+    let res;
+    let json;
 
-    const json = await res.json().catch(() => null);
+    try {
+      res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+
+      json = await res.json().catch(() => null);
+    } catch {
+      return { answer: "שגיאת רשת. נסה/י שוב.", debug: null };
+    }
 
     if (!res.ok || !json) {
-      return { answer: "שגיאת רשת. נסה/י שוב.", debug: null };
+      // CHANGE: show server error details when available
+      return { answer: formatServerError(json), debug: json?.debug || null };
     }
 
     const answer = json.answer || "שגיאת רשת. נסה/י שוב.";

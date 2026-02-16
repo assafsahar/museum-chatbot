@@ -3,7 +3,6 @@
 
 const { createClient } = require("@supabase/supabase-js");
 
-// --- Supabase client (reuse across warm invocations) ---
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
@@ -12,19 +11,18 @@ const supabase =
     ? createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY)
     : null;
 
-// --- Pricing (estimate) ---
-// Set these in Netlify env to match your actual model pricing.
-// Defaults below are for gpt-4o-mini (standard) at time of writing.
 const OPENAI_INPUT_USD_PER_1M = Number(process.env.OPENAI_INPUT_USD_PER_1M || 0.25);
 const OPENAI_OUTPUT_USD_PER_1M = Number(process.env.OPENAI_OUTPUT_USD_PER_1M || 1.0);
 
-function getMuseumIdFromBaseUrl(baseUrl) {
-  // Legacy fallback only (previous behavior)
-  try {
-    return new URL(baseUrl).hostname;
-  } catch {
-    return "unknown";
-  }
+const EXHIBITS_TTL_MS = 60 * 1000; // 1 minute
+const ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const MAX_CACHE_ITEMS = 500;
+
+let exhibitsCache = { key: null, fetchedAt: 0, data: null };
+const answerCache = new Map();
+
+function nowMs() {
+  return Date.now();
 }
 
 function getMonthKeyUtc() {
@@ -39,55 +37,21 @@ function estimateOpenAiCostUsd({ inputTokens, outputTokens }) {
   return Number.isFinite(total) ? total : 0;
 }
 
-async function trackUsage({
-  museumId,
-  monthKey,
-  exhibitId,
-  exhibitionId,
-  mode, // 'openai' | 'fast'
-  cached,
-  inputTokens,
-  outputTokens,
-  totalTokens,
-  openaiCostUsd,
-  fnMs,
-}) {
-  if (!supabase) return;
-
-  const payload = {
-    p_museum_id: museumId,
-    p_month_key: monthKey,
-    p_exhibit_id: exhibitId || null,
-    p_exhibition_id: exhibitionId || "default_exhibition",
-    p_mode: mode || "openai",
-    p_input_tokens: Number(inputTokens || 0),
-    p_output_tokens: Number(outputTokens || 0),
-    p_total_tokens: Number(totalTokens || 0),
-    p_openai_cost_usd: Number(openaiCostUsd || 0),
-    p_fn_ms: Number(fnMs || 0),
-    p_cached: !!cached,
+function jsonResponse(statusCode, payload) {
+  return {
+    statusCode,
+    headers: {
+      "Content-Type": "application/json",
+      "Cache-Control": "no-store",
+    },
+    body: JSON.stringify(payload),
   };
-
-  const { error } = await supabase.rpc("usage_increment", payload);
-  if (error) console.log("usage_increment error:", error);
-}
-
-// --- In-memory caches (survive on warm function instances) ---
-const EXHIBITS_TTL_MS = 60 * 1000; // 1 minute
-const ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
-const MAX_CACHE_ITEMS = 500;
-
-let exhibitsCache = { baseUrl: null, fetchedAt: 0, data: null };
-const answerCache = new Map(); // key -> { answer, ts }
-
-function nowMs() {
-  return Date.now();
 }
 
 function normalizeQuestion(q) {
   return String(q || "")
     .trim()
-    .replace(/\u05F3/g, "'") // Hebrew geresh
+    .replace(/\u05F3/g, "'")
     .replace(/\s+/g, " ");
 }
 
@@ -108,33 +72,6 @@ function cacheSet(key, answer) {
     if (firstKey) answerCache.delete(firstKey);
   }
   answerCache.set(key, { answer, ts: nowMs() });
-}
-
-async function getExhibitsData(baseUrl) {
-  if (
-    exhibitsCache.data &&
-    exhibitsCache.baseUrl === baseUrl &&
-    nowMs() - exhibitsCache.fetchedAt < EXHIBITS_TTL_MS
-  ) {
-    return exhibitsCache.data;
-  }
-
-  const res = await fetch(`${baseUrl}/assets/exhibits.json`, { cache: "no-store" });
-  const data = await res.json();
-
-  exhibitsCache = { baseUrl, fetchedAt: nowMs(), data };
-  return data;
-}
-
-function jsonResponse(statusCode, payload) {
-  return {
-    statusCode,
-    headers: {
-      "Content-Type": "application/json",
-      "Cache-Control": "no-store",
-    },
-    body: JSON.stringify(payload),
-  };
 }
 
 function stripHtml(html) {
@@ -186,7 +123,6 @@ function isCreatorQuestion(q) {
   if (!s) return false;
 
   const normalized = s.replace(/\u05F3/g, "'").replace(/\s+/g, " ");
-  if (/תערוכ/i.test(normalized)) return false;
 
   const patterns = [
     /מי\s+היוצר(?:\/ת)?/i,
@@ -224,56 +160,215 @@ function mapPlainButtonToCommand(qNorm) {
   return qNorm;
 }
 
-async function resolveMuseumAndExhibition({ museumId, exhibitionId, baseUrl }) {
-  // If Supabase not configured - just pass through (still works without multi-tenant enforcement)
+function resolveBaseUrl(event, body) {
+  // Prefer explicit baseUrl from client (best for localhost)
+  const fromBody = String(body?.baseUrl || "").trim();
+  if (fromBody) return fromBody;
+
+  const h = event.headers || {};
+  const origin = String(h.origin || "").trim();
+  if (origin) return origin;
+
+  const referer = String(h.referer || "").trim();
+  if (referer) {
+    try {
+      return new URL(referer).origin;
+    } catch {}
+  }
+
+  const host = String(h["x-forwarded-host"] || h.host || "").trim();
+  const proto = String(h["x-forwarded-proto"] || "http").trim();
+  if (host) return `${proto}://${host}`;
+
+  return "";
+}
+
+function buildContentPath({ museumId, exhibitionId }) {
+  if (museumId && exhibitionId) {
+    const m = encodeURIComponent(String(museumId).trim());
+    const e = encodeURIComponent(String(exhibitionId).trim());
+    return `/assets/content/${m}/${e}.json`;
+  }
+  return "/assets/exhibits.json";
+}
+
+async function getExhibitsData({ baseUrl, museumId, exhibitionId }) {
+  const path = buildContentPath({ museumId, exhibitionId });
+  const cacheKey = `${baseUrl}||${path}`;
+
+  if (exhibitsCache.data && exhibitsCache.key === cacheKey && nowMs() - exhibitsCache.fetchedAt < EXHIBITS_TTL_MS) {
+    return exhibitsCache.data;
+  }
+
+  const url = `${baseUrl}${path}`;
+  const res = await fetch(url, { cache: "no-store" });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`Content fetch failed: ${res.status} ${res.statusText} | ${url} | ${text.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+
+  exhibitsCache = { key: cacheKey, fetchedAt: nowMs(), data };
+  return data;
+}
+
+async function trackUsage({
+  museumId,
+  monthKey,
+  exhibitId,
+  exhibitionId,
+  mode,
+  cached,
+  inputTokens,
+  outputTokens,
+  totalTokens,
+  openaiCostUsd,
+  fnMs,
+}) {
+  if (!supabase) return;
+
+  const payload = {
+    p_museum_id: museumId,
+    p_month_key: monthKey,
+    p_exhibit_id: exhibitId || null,
+    p_exhibition_id: exhibitionId || "default_exhibition",
+    p_mode: mode || "openai",
+    p_input_tokens: Number(inputTokens || 0),
+    p_output_tokens: Number(outputTokens || 0),
+    p_total_tokens: Number(totalTokens || 0),
+    p_openai_cost_usd: Number(openaiCostUsd || 0),
+    p_fn_ms: Number(fnMs || 0),
+    p_cached: !!cached,
+  };
+
+  const { error } = await supabase.rpc("usage_increment", payload);
+  if (error) console.log("usage_increment error:", error);
+}
+
+async function resolveMuseumAndExhibition({ museumId, exhibitionId }) {
+  // Comments in English only
+
+  const museumKey = String(museumId || "").trim();
+  const exhibitionKey = String(exhibitionId || "").trim();
+
+  // Local/demo mode: accept keys as slugs
   if (!supabase) {
     return {
-      museumId: museumId || getMuseumIdFromBaseUrl(baseUrl),
-      exhibitionId: exhibitionId || "default_exhibition",
+      museumDbId: museumKey || "default_museum",
+      exhibitionDbId: exhibitionKey || "default_exhibition",
+      museumSlug: museumKey || "default_museum",
+      exhibitionSlug: exhibitionKey || "default_exhibition",
       enforced: false,
     };
   }
 
-  // Legacy fallback: museumId absent -> use hostname as museum_id
-  const resolvedMuseumId = museumId || getMuseumIdFromBaseUrl(baseUrl);
+  if (!museumKey) throw new Error("Missing museumId");
 
-  // Validate museum exists (only if caller provided museumId explicitly, or if you want strict mode later)
-  if (museumId) {
+  // 1) Resolve museum by museum_id OR museum_name
+  let museumRow = null;
+
+  {
     const { data, error } = await supabase
       .from("museums")
-      .select("museum_id")
-      .eq("museum_id", resolvedMuseumId)
+      .select("museum_id, museum_name")
+      .eq("museum_id", museumKey)
       .maybeSingle();
 
     if (error) throw new Error(`Supabase museums lookup failed: ${error.message}`);
-    if (!data) throw new Error("Invalid museumId");
+    if (data) museumRow = data;
   }
 
-  const resolvedExhibitionId = exhibitionId || "default_exhibition";
+  if (!museumRow) {
+    const { data, error } = await supabase
+      .from("museums")
+      .select("museum_id, museum_name")
+      .eq("museum_name", museumKey)
+      .maybeSingle();
 
-  // Validate exhibition only if provided explicitly (so existing old flows won't break)
-  if (exhibitionId) {
+    if (error) throw new Error(`Supabase museums lookup failed: ${error.message}`);
+    if (data) museumRow = data;
+  }
+
+  if (!museumRow) throw new Error("Invalid museumId");
+
+  const museumDbId = museumRow.museum_id;
+  const museumSlug = museumRow.museum_name;
+
+  // 2) Resolve exhibition by exhibition_id OR exhibition_name (scoped to museum)
+  if (!exhibitionKey) {
+    return {
+      museumDbId,
+      exhibitionDbId: "default_exhibition",
+      museumSlug,
+      exhibitionSlug: "default_exhibition",
+      enforced: true,
+    };
+  }
+
+  let exhibitionRow = null;
+
+  {
     const { data, error } = await supabase
       .from("exhibitions")
-      .select("exhibition_id, museum_id")
-      .eq("exhibition_id", resolvedExhibitionId)
-      .eq("museum_id", resolvedMuseumId)
+      .select("exhibition_id, exhibition_name, museum_id")
+      .eq("exhibition_id", exhibitionKey)
+      .eq("museum_id", museumDbId)
       .maybeSingle();
 
     if (error) throw new Error(`Supabase exhibitions lookup failed: ${error.message}`);
-    if (!data) throw new Error("Invalid exhibitionId for this museumId");
+    if (data) exhibitionRow = data;
   }
 
+  if (!exhibitionRow) {
+    const { data, error } = await supabase
+      .from("exhibitions")
+      .select("exhibition_id, exhibition_name, museum_id")
+      .eq("exhibition_name", exhibitionKey)
+      .eq("museum_id", museumDbId)
+      .maybeSingle();
+
+    if (error) throw new Error(`Supabase exhibitions lookup failed: ${error.message}`);
+    if (data) exhibitionRow = data;
+  }
+
+  if (!exhibitionRow) throw new Error("Invalid exhibitionId for this museumId");
+
   return {
-    museumId: resolvedMuseumId,
-    exhibitionId: resolvedExhibitionId,
+    museumDbId,
+    exhibitionDbId: exhibitionRow.exhibition_id,
+    museumSlug,
+    exhibitionSlug: exhibitionRow.exhibition_name,
     enforced: true,
   };
 }
 
+
+function buildDemoAnswer({ exhibit, qNorm, qNormRaw }) {
+  // Demo mode answers without OpenAI
+  if (qNorm === "__SUMMARY__") {
+    const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
+    return limitChars(fullDesc, 700) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+  }
+
+  if (qNorm.startsWith("__FACT:") && qNorm.endsWith("__")) {
+    const factKey = qNorm.replace(/^__FACT:/, "").replace(/__$/, "").trim();
+    return getFactAnswer(exhibit, factKey);
+  }
+
+  if (isCreatorQuestion(qNormRaw) || qNormRaw === "מי היוצר/ת") {
+    const creatorName = String(exhibit.creatorName || "").trim();
+    const creatorBio = String(exhibit.creatorBio || "").trim();
+    return buildCreatorAnswer(creatorName, creatorBio);
+  }
+
+  // For free questions in demo mode, return a safe fixed response
+  return "במצב הדגמה מקומי אני עונה רק מתוך הכפתורים והעובדות שהוזנו. אפשר ללחוץ על אחת האפשרויות למעלה.";
+}
+
 exports.handler = async (event) => {
   const t0 = Date.now();
-
   const safeTrack = (args) => {
     const fnMs = Date.now() - t0;
     trackUsage({ ...args, fnMs }).catch((e) => console.log("trackUsage failed:", e));
@@ -284,18 +379,10 @@ exports.handler = async (event) => {
       return jsonResponse(405, { error: "Method not allowed" });
     }
 
-    const apiKey = process.env.OPENAI_API_KEY;
-    if (!apiKey) {
-      return jsonResponse(500, { error: "Missing OPENAI_API_KEY" });
-    }
-
     const body = JSON.parse(event.body || "{}");
-
-    // Client payload
     const exhibitId = body.exhibitId;
     const question = body.question;
 
-    // New multi-tenant IDs (UIDs)
     const museumIdFromClient = body.museumId || null;
     const exhibitionIdFromClient = body.exhibitionId || null;
 
@@ -303,16 +390,19 @@ exports.handler = async (event) => {
       return jsonResponse(400, { error: "Missing exhibitId or question" });
     }
 
-    const origin = event.headers.origin || event.headers.referer || "";
-    const baseUrl = origin ? new URL(origin).origin : null;
+    const baseUrl = resolveBaseUrl(event, body);
     if (!baseUrl) {
-      return jsonResponse(500, { error: "Cannot resolve origin" });
+      return jsonResponse(500, { error: "Cannot resolve baseUrl" });
     }
 
-    const { museumId, exhibitionId } = await resolveMuseumAndExhibition({
+    const {
+      museumDbId,
+      exhibitionDbId,
+      museumSlug,
+      exhibitionSlug,
+    } = await resolveMuseumAndExhibition({
       museumId: museumIdFromClient,
       exhibitionId: exhibitionIdFromClient,
-      baseUrl,
     });
 
     const monthKey = getMonthKeyUtc();
@@ -320,21 +410,26 @@ exports.handler = async (event) => {
     const qNormRaw = normalizeQuestion(question);
     const qNorm = mapPlainButtonToCommand(qNormRaw);
 
-    const exhibitsData = await getExhibitsData(baseUrl);
+    const exhibitsData = await getExhibitsData({
+      baseUrl,
+      museumId: museumSlug,
+      exhibitionId: exhibitionSlug,
+    });
+
     const exhibit = exhibitsData?.exhibits?.[exhibitId];
     if (!exhibit) {
       return jsonResponse(404, { error: "Exhibit not found" });
     }
 
-    // Cache must be tenant-aware
-    const cacheKey = `${museumId}||${exhibitionId}||${exhibitId}||${qNorm}`;
+    const cacheKey = `${museumSlug}||${exhibitionSlug}||${exhibitId}||${qNorm}`;
+
     const cachedAnswer = cacheGet(cacheKey);
     if (cachedAnswer) {
       safeTrack({
-        museumId,
+        museumId: museumDbId,
         monthKey,
         exhibitId,
-        exhibitionId,
+        exhibitionId: exhibitionDbId,
         mode: "fast",
         cached: true,
         inputTokens: 0,
@@ -342,24 +437,23 @@ exports.handler = async (event) => {
         totalTokens: 0,
         openaiCostUsd: 0,
       });
-
       return jsonResponse(200, { answer: cachedAnswer, cached: true });
     }
 
-    // --- Fast paths (NO OpenAI) ---
-    if (qNorm === "__SUMMARY__") {
-      const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
-      const answer =
-        limitChars(fullDesc, 700) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+    const apiKey = process.env.OPENAI_API_KEY;
+
+    // Demo mode: if no key, answer safely without OpenAI
+    if (!apiKey) {
+      const answer = buildDemoAnswer({ exhibit, qNorm, qNormRaw });
 
       cacheSet(cacheKey, answer);
 
       safeTrack({
-        museumId,
+        museumId: museumDbId,
         monthKey,
         exhibitId,
-        exhibitionId,
-        mode: "fast",
+        exhibitionId: exhibitionDbId,
+        mode: "demo",
         cached: false,
         inputTokens: 0,
         outputTokens: 0,
@@ -367,55 +461,10 @@ exports.handler = async (event) => {
         openaiCostUsd: 0,
       });
 
-      return jsonResponse(200, { answer, fast: "summary" });
+      return jsonResponse(200, { answer, demo: true });
     }
 
-    if (qNorm.startsWith("__FACT:") && qNorm.endsWith("__")) {
-      const factKey = qNorm.replace(/^__FACT:/, "").replace(/__$/, "").trim();
-      const answer = getFactAnswer(exhibit, factKey);
-
-      cacheSet(cacheKey, answer);
-
-      safeTrack({
-        museumId,
-        monthKey,
-        exhibitId,
-        exhibitionId,
-        mode: "fast",
-        cached: false,
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        openaiCostUsd: 0,
-      });
-
-      return jsonResponse(200, { answer, fast: "fact" });
-    }
-
-    if (isCreatorQuestion(qNormRaw) || qNormRaw === "מי היוצר/ת") {
-      const creatorName = String(exhibit.creatorName || "").trim();
-      const creatorBio = String(exhibit.creatorBio || "").trim();
-      const answer = buildCreatorAnswer(creatorName, creatorBio);
-
-      cacheSet(cacheKey, answer);
-
-      safeTrack({
-        museumId,
-        monthKey,
-        exhibitId,
-        exhibitionId,
-        mode: "fast",
-        cached: false,
-        inputTokens: 0,
-        outputTokens: 0,
-        totalTokens: 0,
-        openaiCostUsd: 0,
-      });
-
-      return jsonResponse(200, { answer, fast: "creator" });
-    }
-
-    // --- OpenAI path ---
+    // OpenAI mode
     const exhibitionSummary = exhibitsData?.museum?.exhibitionSummary || "";
     const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
     const exhibitSummary = limitChars(fullDesc, 1500);
@@ -442,19 +491,11 @@ exports.handler = async (event) => {
 - לא להמציא עובדות, שמות, תאריכים, או פרטים שלא מופיעים ב-Context.
 - לא להוסיף קישורים ולא להפנות לאינטרנט.
 - תשובה קצרה (עד ~120 מילים), אלא אם המשתמש ביקש במפורש פירוט.
-- השתמש/י במונחים "היצירה" / "המיצג" כשעונים על exhibitSummary.
-- השתמש/י במונח "התערוכה" רק כשמתייחסים במפורש ל-exhibitionSummary.
-- אל תערבב/י בין המושגים.
 `;
 
     const userPrompt = `
 Context (המידע היחיד שמותר להשתמש בו):
 ${JSON.stringify(context, null, 2)}
-
-הנחיה:
-- העדף/י לענות קודם על בסיס facts.
-- אם צריך, השתמש/י ב-exhibitSummary וב-exhibitionSummary.
-- אם לא מופיע מידע ב-Context: החזר/י את משפט "אין לי מספיק מידע..." בדיוק.
 
 שאלת המבקר:
 ${qNormRaw}
@@ -479,10 +520,10 @@ ${qNormRaw}
     const openaiJson = await openaiRes.json();
     if (!openaiRes.ok) {
       safeTrack({
-        museumId,
+        museumId: museumDbId,
         monthKey,
         exhibitId,
-        exhibitionId,
+        exhibitionId: exhibitionDbId,
         mode: "openai",
         cached: false,
         inputTokens: 0,
@@ -497,16 +538,15 @@ ${qNormRaw}
     const { inputTokens, outputTokens, totalTokens } = getUsageFromOpenAiResponse(openaiJson);
     const openaiCostUsd = estimateOpenAiCostUsd({ inputTokens, outputTokens });
 
-    const answer =
-      extractText(openaiJson) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+    const answer = extractText(openaiJson) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
 
     cacheSet(cacheKey, answer);
 
     safeTrack({
-      museumId,
+      museumId: museumDbId,
       monthKey,
       exhibitId,
-      exhibitionId,
+      exhibitionId: exhibitionDbId,
       mode: "openai",
       cached: false,
       inputTokens,

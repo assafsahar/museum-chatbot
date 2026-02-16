@@ -4,7 +4,7 @@
 (async () => {
   const params = new URLSearchParams(location.search);
 
-  // Multi-tenant UIDs (optional)
+  // Tenant params
   const museumId = params.get("museum") || params.get("museumId") || null;
   const exhibitionId = params.get("exhibition") || params.get("exhibitionId") || null;
 
@@ -32,9 +32,28 @@
     return `exhibit.html?${q.toString()}`;
   }
 
+  function getContentUrl() {
+    // If both exist, load per-tenant file. Otherwise keep legacy behavior.
+    if (museumId && exhibitionId) {
+      const m = encodeURIComponent(String(museumId).trim());
+      const e = encodeURIComponent(String(exhibitionId).trim());
+      return `assets/content/${m}/${e}.json`;
+    }
+    return "assets/exhibits.json";
+  }
+
   // Load exhibition + exhibits list
-  const res = await fetch("assets/exhibits.json", { cache: "no-store" });
-  const data = await res.json();
+  const contentUrl = getContentUrl();
+
+  let data = null;
+  try {
+    const res = await fetch(contentUrl, { cache: "no-store" });
+    if (!res.ok) throw new Error(`content http ${res.status}`);
+    data = await res.json();
+  } catch (e) {
+    console.log("content load failed:", e);
+    return;
+  }
 
   const exhibitionImg = document.getElementById("exhibitionImg");
   const exhibitionTitle = document.getElementById("exhibitionTitle");

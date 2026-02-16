@@ -119,6 +119,20 @@ function startConversationTracking({ museumId, exhibitionId, exhibitId, exhibitT
   return api;
 }
 
+// ------------------------------
+// Content Resolution
+// ------------------------------
+
+function getContentUrl({ museumId, exhibitionId }) {
+  // If both exist, load per-tenant file. Otherwise keep legacy behavior.
+  if (museumId && exhibitionId) {
+    const m = encodeURIComponent(String(museumId).trim());
+    const e = encodeURIComponent(String(exhibitionId).trim());
+    return `assets/content/${m}/${e}.json`;
+  }
+  return "assets/exhibits.json";
+}
+
 // Load monthly usage counter (optional UI)
 async function loadMonthlyUsage({ museumId, exhibitionId }) {
   const el = document.getElementById("usageMonthlyValue");
@@ -156,7 +170,7 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
   // Exhibit id (existing behavior)
   const exhibitId = params.get("id") || "exhibit-01";
 
-  // New multi-tenant UIDs
+  // Tenant params
   const museumId = params.get("museum") || params.get("museumId") || null;
   const exhibitionId = params.get("exhibition") || params.get("exhibitionId") || null;
 
@@ -182,7 +196,7 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
     exhibitTitle: "",
   });
 
-  // Observe chat DOM and persist on changes (works even if internal chatClient updates text)
+  // Observe chat DOM and persist on changes
   let syncTimer = null;
   const scheduleSync = () => {
     if (syncTimer) clearTimeout(syncTimer);
@@ -225,8 +239,18 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
   });
 
   // Load data + render
-  const res = await fetch("assets/exhibits.json", { cache: "no-store" });
-  const data = await res.json();
+  const contentUrl = getContentUrl({ museumId, exhibitionId });
+
+  let data = null;
+  try {
+    const res = await fetch(contentUrl, { cache: "no-store" });
+    if (!res.ok) throw new Error(`content http ${res.status}`);
+    data = await res.json();
+  } catch (e) {
+    console.log("content load failed:", e);
+    chat.appendMessage("assistant", "לא הצלחתי לטעון את תוכן התערוכה.");
+    return;
+  }
 
   renderMuseum(els, data);
 
@@ -245,7 +269,6 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
   renderCreator(els, exhibit);
 
   setTags(els, exhibit, async (tagText) => {
-    // Buttons send as natural language to chat
     chat.appendMessage("user", tagText);
     const pending = chat.appendMessage("assistant", "רגע…");
 

@@ -65,7 +65,7 @@ export function setTags(els, exhibit, onTagClicked) {
 
   const finalTags = filtered.length
     ? filtered
-    : ["תקציר קצר", "טכניקות", "חומרים", "שנת יצירה", "מי היוצר/ת"];
+    : ["תקציר קצר", "טכניקות", "חומרים", "שנת יצירה", "אוצר/ת", "מי היוצר/ת"];
 
   finalTags.forEach((t) => {
     const btn = document.createElement("button");
