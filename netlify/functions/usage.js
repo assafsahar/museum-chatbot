@@ -1,4 +1,4 @@
-// netlify/functions/usage.js (להחלפה מלאה)
+// netlify/functions/usage.js (replace fully)
 // Comments in English only
 
 const { createClient } = require("@supabase/supabase-js");
@@ -33,6 +33,7 @@ function getBaseUrlFromEvent(event) {
 }
 
 function getMuseumIdFromBaseUrl(baseUrl) {
+  // Legacy fallback only (previous behavior)
   try {
     return new URL(baseUrl).hostname;
   } catch {
@@ -42,6 +43,46 @@ function getMuseumIdFromBaseUrl(baseUrl) {
 
 function getMonthKeyUtc(date = new Date()) {
   return `${date.getUTCFullYear()}-${String(date.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+async function resolveMuseumAndExhibition({ museumId, exhibitionId, baseUrl }) {
+  // If Supabase not configured - just pass through
+  if (!supabase) {
+    return {
+      museumId: museumId || getMuseumIdFromBaseUrl(baseUrl),
+      exhibitionId: exhibitionId || "default_exhibition",
+      enforced: false,
+    };
+  }
+
+  const resolvedMuseumId = museumId || getMuseumIdFromBaseUrl(baseUrl);
+  const resolvedExhibitionId = exhibitionId || "default_exhibition";
+
+  // Validate only when explicitly provided (so old links keep working)
+  if (museumId) {
+    const { data, error } = await supabase
+      .from("museums")
+      .select("museum_id")
+      .eq("museum_id", resolvedMuseumId)
+      .maybeSingle();
+
+    if (error) throw new Error(`Supabase museums lookup failed: ${error.message}`);
+    if (!data) throw new Error("Invalid museumId");
+  }
+
+  if (exhibitionId) {
+    const { data, error } = await supabase
+      .from("exhibitions")
+      .select("exhibition_id, museum_id")
+      .eq("exhibition_id", resolvedExhibitionId)
+      .eq("museum_id", resolvedMuseumId)
+      .maybeSingle();
+
+    if (error) throw new Error(`Supabase exhibitions lookup failed: ${error.message}`);
+    if (!data) throw new Error("Invalid exhibitionId for this museumId");
+  }
+
+  return { museumId: resolvedMuseumId, exhibitionId: resolvedExhibitionId, enforced: true };
 }
 
 exports.handler = async (event) => {
@@ -54,19 +95,33 @@ exports.handler = async (event) => {
       return jsonResponse(500, { error: "Missing Supabase env vars" });
     }
 
-    const baseUrl = getBaseUrlFromEvent(event);
-    const museumId = getMuseumIdFromBaseUrl(baseUrl || "http://unknown.local");
-    const monthKey = getMonthKeyUtc();
+    const baseUrl = getBaseUrlFromEvent(event) || "http://unknown.local";
 
     const url = new URL(event.rawUrl);
-    const exhibitId = url.searchParams.get("exhibitId");     // optional
+
+    // New multi-tenant IDs (optional)
+    const museumIdFromClient = url.searchParams.get("museumId") || url.searchParams.get("museum") || null;
+    const exhibitionIdFromClient =
+      url.searchParams.get("exhibitionId") || url.searchParams.get("exhibition") || null;
+
+    // Existing params
+    const exhibitId = url.searchParams.get("exhibitId"); // optional
     const breakdown = url.searchParams.get("breakdown") === "1"; // optional
 
-    // Total monthly
+    const { museumId, exhibitionId } = await resolveMuseumAndExhibition({
+      museumId: museumIdFromClient,
+      exhibitionId: exhibitionIdFromClient,
+      baseUrl,
+    });
+
+    const monthKey = getMonthKeyUtc();
+
+    // Total monthly (per museum + exhibition)
     const { data: totalRow, error: totalErr } = await supabase
       .from("usage_monthly")
       .select("questions_total")
       .eq("museum_id", museumId)
+      .eq("exhibition_id", exhibitionId)
       .eq("month_key", monthKey)
       .maybeSingle();
 
@@ -84,6 +139,7 @@ exports.handler = async (event) => {
         .from("usage_monthly_exhibit")
         .select("questions_total")
         .eq("museum_id", museumId)
+        .eq("exhibition_id", exhibitionId)
         .eq("month_key", monthKey)
         .eq("exhibit_id", exhibitId)
         .maybeSingle();
@@ -103,6 +159,7 @@ exports.handler = async (event) => {
         .from("usage_monthly_exhibit")
         .select("exhibit_id, questions_total")
         .eq("museum_id", museumId)
+        .eq("exhibition_id", exhibitionId)
         .eq("month_key", monthKey)
         .order("questions_total", { ascending: false })
         .limit(50);
@@ -120,6 +177,7 @@ exports.handler = async (event) => {
 
     return jsonResponse(200, {
       museumId,
+      exhibitionId,
       monthKey,
       questionsTotal,
       exhibitId: exhibitId || null,
@@ -127,6 +185,6 @@ exports.handler = async (event) => {
       exhibits,
     });
   } catch (err) {
-    return jsonResponse(500, { error: "Server error", details: String(err) });
+    return jsonResponse(500, { error: "Server error", details: String(err?.message || err) });
   }
 };

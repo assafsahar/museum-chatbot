@@ -17,15 +17,30 @@ function normalizeQuestion(q) {
     .replace(/\s+/g, " ");
 }
 
-function makeCacheKey(exhibitId, question) {
-  return `${String(exhibitId || "").trim()}||${normalizeQuestion(question)}`;
+function normId(v) {
+  const s = String(v ?? "").trim();
+  return s || null;
+}
+
+function makeCacheKey({ museumId, exhibitionId, exhibitId, question }) {
+  const m = normId(museumId) || "";
+  const e = normId(exhibitionId) || "";
+  const x = normId(exhibitId) || "";
+  return `${m}||${e}||${x}||${normalizeQuestion(question)}`;
 }
 
 function supportsTTS() {
   return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 }
 
-export function createChatClient({ els, exhibitId, debugMode, mockMode }) {
+export function createChatClient({
+  els,
+  exhibitId,
+  museumId = null,
+  exhibitionId = null,
+  debugMode,
+  mockMode,
+}) {
   const clientCache = new Map(); // key -> { answer, ts }
 
   // Init TTS once per page
@@ -109,7 +124,13 @@ export function createChatClient({ els, exhibitId, debugMode, mockMode }) {
 
   async function ask(question) {
     const qNorm = normalizeQuestion(question);
-    const key = makeCacheKey(exhibitId, qNorm);
+
+    const key = makeCacheKey({
+      museumId,
+      exhibitionId,
+      exhibitId,
+      question: qNorm,
+    });
 
     const cached = cacheGet(key);
     if (cached) return { answer: cached, debug: { clientCache: true } };
@@ -120,14 +141,19 @@ export function createChatClient({ els, exhibitId, debugMode, mockMode }) {
       return { answer, debug: { mock: true } };
     }
 
-    const url = debugMode
-      ? "/.netlify/functions/chat?debug=1"
-      : "/.netlify/functions/chat";
+    const url = debugMode ? "/.netlify/functions/chat?debug=1" : "/.netlify/functions/chat";
+
+    const payload = {
+      exhibitId: normId(exhibitId),
+      museumId: normId(museumId),
+      exhibitionId: normId(exhibitionId),
+      question: qNorm,
+    };
 
     const res = await fetch(url, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ exhibitId, question: qNorm }),
+      body: JSON.stringify(payload),
     });
 
     const json = await res.json().catch(() => null);

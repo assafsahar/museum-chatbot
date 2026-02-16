@@ -1,4 +1,6 @@
-// app.js (להחלפה מלאה)
+// app.js (replace fully)
+// Comments in English only
+
 import { getEls } from "./modules/dom.js";
 import {
   renderMuseum,
@@ -53,6 +55,8 @@ function saveSession(session) {
   const index = readIndex();
   const summary = {
     id: session.id,
+    museumId: session.museumId || null,
+    exhibitionId: session.exhibitionId || null,
     exhibitId: session.exhibitId,
     exhibitTitle: session.exhibitTitle || "",
     startedAt: session.startedAt,
@@ -65,9 +69,11 @@ function saveSession(session) {
   writeIndex(next);
 }
 
-function startConversationTracking({ exhibitId, exhibitTitle }) {
+function startConversationTracking({ museumId, exhibitionId, exhibitId, exhibitTitle }) {
   const session = {
     id: createId(),
+    museumId: museumId || null,
+    exhibitionId: exhibitionId || null,
     exhibitId,
     exhibitTitle: exhibitTitle || "",
     startedAt: nowIso(),
@@ -114,12 +120,20 @@ function startConversationTracking({ exhibitId, exhibitTitle }) {
 }
 
 // Load monthly usage counter (optional UI)
-async function loadMonthlyUsage() {
+async function loadMonthlyUsage({ museumId, exhibitionId }) {
   const el = document.getElementById("usageMonthlyValue");
   if (!el) return;
 
   try {
-    const res = await fetch("/.netlify/functions/usage", { cache: "no-store" });
+    const qs = new URLSearchParams();
+    if (museumId) qs.set("museumId", museumId);
+    if (exhibitionId) qs.set("exhibitionId", exhibitionId);
+
+    const url = qs.toString()
+      ? `/.netlify/functions/usage?${qs.toString()}`
+      : "/.netlify/functions/usage";
+
+    const res = await fetch(url, { cache: "no-store" });
     const json = await res.json();
 
     if (!res.ok) {
@@ -138,7 +152,14 @@ async function loadMonthlyUsage() {
 
 (async function () {
   const params = new URLSearchParams(location.search);
+
+  // Exhibit id (existing behavior)
   const exhibitId = params.get("id") || "exhibit-01";
+
+  // New multi-tenant UIDs
+  const museumId = params.get("museum") || params.get("museumId") || null;
+  const exhibitionId = params.get("exhibition") || params.get("exhibitionId") || null;
+
   const debugMode = params.get("debug") === "1";
   const mockMode = params.get("mock") === "1";
 
@@ -147,12 +168,16 @@ async function loadMonthlyUsage() {
   const chat = createChatClient({
     els,
     exhibitId,
+    museumId,
+    exhibitionId,
     debugMode,
     mockMode,
   });
 
   // Start local conversation tracking (so museum page can show chats)
   const tracker = startConversationTracking({
+    museumId,
+    exhibitionId,
     exhibitId,
     exhibitTitle: "",
   });
@@ -234,7 +259,7 @@ async function loadMonthlyUsage() {
   renderVideo(els, exhibit);
 
   // Load monthly usage counter (if the element exists on this page)
-  await loadMonthlyUsage();
+  await loadMonthlyUsage({ museumId, exhibitionId });
 
   chat.appendMessage(
     "assistant",

@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>מודל תמחור | Game Factory</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --accent-color: #e67e22;
+            --bg-light: #f4f7f9;
+            --text-color: #333;
+            --white: #ffffff;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            color: var(--text-color);
+            line-height: 1.6;
+            background-color: var(--bg-light);
+        }
+
+        .container {
+            max-width: 1000px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        header {
+            background: var(--primary-color);
+            color: white;
+            padding: 3rem 0;
+            text-align: center;
+            border-bottom: 5px solid var(--accent-color);
+        }
+
+        .main-logo {
+            max-width: 180px;
+            height: auto;
+            filter: drop-shadow(0px 0px 10px rgba(255, 255, 255, 0.5));
+            margin-bottom: 1rem;
+        }
+
+        header h1 { margin: 0; font-size: 2.2rem; }
+
+        .section-title { text-align: center; margin: 3rem 0; }
+        .section-title h2 { font-size: 2rem; color: var(--primary-color); position: relative; padding-bottom: 10px; }
+        .section-title h2::after { content: ''; width: 60px; height: 3px; background: var(--accent-color); position: absolute; bottom: 0; right: 50%; transform: translateX(50%); }
+
+        .setup-box { background: var(--white); border-radius: 15px; box-shadow: 0 5px 15px rgba(0,0,0,0.05); overflow: hidden; margin-bottom: 4rem; }
+        .setup-header { background: #f8f9fa; padding: 1.5rem 2rem; border-bottom: 1px solid #eee; }
+        .setup-content { padding: 2rem; display: flex; flex-wrap: wrap; gap: 2rem; align-items: center; }
+        .setup-table { flex: 1; min-width: 300px; border-collapse: collapse; }
+        .setup-table td { padding: 15px; border-bottom: 1px solid #eee; font-size: 1.1rem; }
+        .price-tag { font-weight: bold; color: var(--primary-color); text-align: left; }
+        .setup-details { flex: 1; min-width: 300px; background: #fdfaf7; padding: 1.5rem; border-right: 4px solid var(--accent-color); border-radius: 4px; }
+
+        .plans-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 2rem; margin-bottom: 4rem; }
+        .plan-card { background: var(--white); padding: 2.5rem 2rem; border-radius: 15px; text-align: center; box-shadow: 0 5px 15px rgba(0,0,0,0.05); border: 1px solid #eee; }
+        .plan-card.featured { border: 2px solid var(--accent-color); transform: scale(1.05); position: relative; }
+        .featured-badge { position: absolute; top: -15px; right: 50%; transform: translateX(50%); background: var(--accent-color); color: white; padding: 4px 15px; border-radius: 20px; font-size: 0.85rem; font-weight: bold; }
+        .plan-name { font-size: 1.5rem; font-weight: bold; color: var(--primary-color); }
+        .plan-price { font-size: 2.5rem; font-weight: bold; margin: 1rem 0; }
+        .plan-price span { font-size: 1rem; font-weight: normal; color: #777; }
+
+        .plan-features { list-style: none; padding: 0; margin: 2rem 0; text-align: right; }
+        .plan-features li { padding: 8px 0; border-bottom: 1px solid #f9f9f9; font-size: 0.95rem; }
+        .plan-features li::before { content: '●'; color: var(--accent-color); margin-left: 10px; font-size: 0.8rem; }
+
+        .addons { background: #2c3e50; color: white; padding: 1.5rem; border-radius: 10px; text-align: center; margin-bottom: 4rem; }
+        .footer-note { text-align: center; padding: 2rem 0; color: #777; font-size: 0.9rem; border-top: 1px solid #ddd; }
+
+        @media (max-width: 768px) { .plan-card.featured { transform: scale(1); } .setup-content { flex-direction: column; } }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="container">
+            <img src="./assets/game-factory-logo.png" alt="Game Factory Logo" class="main-logo">
+            <h1>מודל התקשרות ותמחור</h1>
+            <p>המדריך הדיגיטלי החכם למוזיאונים וגלריות</p>
+        </div>
+    </header>
+
+    <div class="container">
+        
+        <div class="section-title">
+            <h2>1. הקמה והטמעה (חד-פעמי)</h2>
+        </div>
+
+        <div class="setup-box">
+            <div class="setup-header"><strong>מה כלול בחבילת ההקמה?</strong></div>
+            <div class="setup-content">
+                <table class="setup-table">
+                    <tr><td>עד 20 מיצגים</td><td class="price-tag">2,400 ₪</td></tr>
+                    <tr><td>עד 50 מיצגים</td><td class="price-tag">4,200 ₪</td></tr>
+                    <tr><td>עד 100 מיצגים</td><td class="price-tag">7,500 ₪</td></tr>
+                </table>
+                <div class="setup-details">
+                    <ul style="padding-right: 20px; margin: 0;">
+                        <li>פתיחת מוזיאון ותערוכה במערכת</li>
+                        <li>הזנת תוכן ויצירת מיצגים</li>
+                        <li>הפקת קודי QR כתמונה לכל מיצג</li>
+                        <li>בדיקות יציבות ודיוק (QA)</li>
+                        <li>הדרכת צוות קצרה ודשבורד בסיסי</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <div class="section-title">
+            <h2>2. רישיון שירות ותמיכה (חודשי)</h2>
+        </div>
+
+        <div class="plans-grid">
+            <div class="plan-card">
+                <div class="plan-name">START</div>
+                <div class="plan-price">390 ₪<span>/חודש</span></div>
+                <ul class="plan-features">
+                    <li>עד 1,000 שאלות בחודש</li>
+                    <li>דשבורד שימוש בסיסי (סה"כ + לפי מיצג)</li>
+                    <li>תמיכה טכנית זמינה</li>
+                </ul>
+            </div>
+
+            <div class="plan-card featured">
+                <div class="featured-badge">הנבחר ביותר</div>
+                <div class="plan-name">STANDARD</div>
+                <div class="plan-price">590 ₪<span>/חודש</span></div>
+                <ul class="plan-features">
+                    <li>עד 2,000 שאלות בחודש</li>
+                    <li>תעדוף בתמיכה טכנית</li>
+                    <li>דוחות שימוש חודשיים</li>
+                    <li>זמינות בערוצי WhatsApp וטלפון</li>
+                </ul>
+            </div>
+
+            <div class="plan-card">
+                <div class="plan-name">PRO</div>
+                <div class="plan-price">990 ₪<span>/חודש</span></div>
+                <ul class="plan-features">
+                    <li>עד 5,000 שאלות בחודש</li>
+                    <li>התחייבות למענה (SLA) תוך 4 שעות עסקים</li>
+                    <li>שיחת סטטוס חודשית קצרה על תפעול</li>
+                    <li>ליווי אישי מול גורמי מקצוע במוזיאון</li>
+                </ul>
+            </div>
+        </div>
+
+        <div class="addons">
+            <strong>הרחבות שימוש:</strong> &nbsp;&nbsp; 
+            תוספת 1,000 שאלות: 290 ₪ &nbsp; | &nbsp; תוספת 5,000 שאלות: 990 ₪
+        </div>
+
+        <div class="footer-note">
+            <p>המחירים אינם כוללים מע"מ | גיים פקטורי - חוויות אינטראקטיביות דיגיטליות 2026</p>
+        </div>
+    </div>
+
+</body>
+</html>

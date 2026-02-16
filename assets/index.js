@@ -2,6 +2,36 @@
 // Comments in English only
 
 (async () => {
+  const params = new URLSearchParams(location.search);
+
+  // Multi-tenant UIDs (optional)
+  const museumId = params.get("museum") || params.get("museumId") || null;
+  const exhibitionId = params.get("exhibition") || params.get("exhibitionId") || null;
+
+  function buildQuery(extra) {
+    const q = new URLSearchParams();
+    if (museumId) q.set("museumId", museumId);
+    if (exhibitionId) q.set("exhibitionId", exhibitionId);
+
+    Object.entries(extra || {}).forEach(([k, v]) => {
+      if (v === undefined || v === null || v === "") return;
+      q.set(k, String(v));
+    });
+
+    return q.toString();
+  }
+
+  function buildExhibitHref(exhibitKey) {
+    const q = new URLSearchParams();
+    q.set("id", exhibitKey);
+
+    // Keep tenant context when navigating into exhibit page
+    if (museumId) q.set("museum", museumId);
+    if (exhibitionId) q.set("exhibition", exhibitionId);
+
+    return `exhibit.html?${q.toString()}`;
+  }
+
   // Load exhibition + exhibits list
   const res = await fetch("assets/exhibits.json", { cache: "no-store" });
   const data = await res.json();
@@ -39,7 +69,7 @@
       row.className = "exhibitRow";
 
       const a = document.createElement("a");
-      a.href = `exhibit.html?id=${encodeURIComponent(id)}`;
+      a.href = buildExhibitHref(encodeURIComponent(id));
       a.className = "exhibitLink";
       a.innerHTML = `<b>${ex.title || id}</b><div class="small">${ex.subtitle || ""}</div>`;
 
@@ -53,7 +83,10 @@
   const usageMonthEl = document.getElementById("usageMonth");
 
   try {
-    const usageRes = await fetch("/.netlify/functions/usage", { cache: "no-store" });
+    const qs = buildQuery({});
+    const url = qs ? `/.netlify/functions/usage?${qs}` : "/.netlify/functions/usage";
+
+    const usageRes = await fetch(url, { cache: "no-store" });
     const usageJson = await usageRes.json();
 
     if (usageCountEl) usageCountEl.textContent = String(usageJson?.questionsTotal ?? 0);
@@ -99,7 +132,10 @@
     if (!breakdownEl) return;
 
     try {
-      const res = await fetch("/.netlify/functions/usage?breakdown=1", { cache: "no-store" });
+      const qs = buildQuery({ breakdown: 1 });
+      const url = qs ? `/.netlify/functions/usage?${qs}` : "/.netlify/functions/usage?breakdown=1";
+
+      const res = await fetch(url, { cache: "no-store" });
       if (!res.ok) throw new Error(`usage breakdown http ${res.status}`);
 
       const json = await res.json();
@@ -107,7 +143,8 @@
       renderUsageBreakdown(breakdownEl, items, map);
     } catch (e) {
       console.log("usage breakdown error:", e);
-      breakdownEl.innerHTML = `<div class="small">לא ניתן לטעון את ההתפלגות כרגע.</div>`;
+      const breakdownEl = document.getElementById("usageBreakdown");
+      if (breakdownEl) breakdownEl.innerHTML = `<div class="small">לא ניתן לטעון את ההתפלגות כרגע.</div>`;
     }
   }
 

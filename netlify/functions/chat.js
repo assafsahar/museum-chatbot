@@ -1,4 +1,6 @@
 // netlify/functions/chat.js
+// Comments in English only
+
 const { createClient } = require("@supabase/supabase-js");
 
 // --- Supabase client (reuse across warm invocations) ---
@@ -17,8 +19,9 @@ const OPENAI_INPUT_USD_PER_1M = Number(process.env.OPENAI_INPUT_USD_PER_1M || 0.
 const OPENAI_OUTPUT_USD_PER_1M = Number(process.env.OPENAI_OUTPUT_USD_PER_1M || 1.0);
 
 function getMuseumIdFromBaseUrl(baseUrl) {
+  // Legacy fallback only (previous behavior)
   try {
-    return new URL(baseUrl).hostname; // stable museum id
+    return new URL(baseUrl).hostname;
   } catch {
     return "unknown";
   }
@@ -221,6 +224,53 @@ function mapPlainButtonToCommand(qNorm) {
   return qNorm;
 }
 
+async function resolveMuseumAndExhibition({ museumId, exhibitionId, baseUrl }) {
+  // If Supabase not configured - just pass through (still works without multi-tenant enforcement)
+  if (!supabase) {
+    return {
+      museumId: museumId || getMuseumIdFromBaseUrl(baseUrl),
+      exhibitionId: exhibitionId || "default_exhibition",
+      enforced: false,
+    };
+  }
+
+  // Legacy fallback: museumId absent -> use hostname as museum_id
+  const resolvedMuseumId = museumId || getMuseumIdFromBaseUrl(baseUrl);
+
+  // Validate museum exists (only if caller provided museumId explicitly, or if you want strict mode later)
+  if (museumId) {
+    const { data, error } = await supabase
+      .from("museums")
+      .select("museum_id")
+      .eq("museum_id", resolvedMuseumId)
+      .maybeSingle();
+
+    if (error) throw new Error(`Supabase museums lookup failed: ${error.message}`);
+    if (!data) throw new Error("Invalid museumId");
+  }
+
+  const resolvedExhibitionId = exhibitionId || "default_exhibition";
+
+  // Validate exhibition only if provided explicitly (so existing old flows won't break)
+  if (exhibitionId) {
+    const { data, error } = await supabase
+      .from("exhibitions")
+      .select("exhibition_id, museum_id")
+      .eq("exhibition_id", resolvedExhibitionId)
+      .eq("museum_id", resolvedMuseumId)
+      .maybeSingle();
+
+    if (error) throw new Error(`Supabase exhibitions lookup failed: ${error.message}`);
+    if (!data) throw new Error("Invalid exhibitionId for this museumId");
+  }
+
+  return {
+    museumId: resolvedMuseumId,
+    exhibitionId: resolvedExhibitionId,
+    enforced: true,
+  };
+}
+
 exports.handler = async (event) => {
   const t0 = Date.now();
 
@@ -240,9 +290,14 @@ exports.handler = async (event) => {
     }
 
     const body = JSON.parse(event.body || "{}");
+
+    // Client payload
     const exhibitId = body.exhibitId;
     const question = body.question;
-    const exhibitionId = body.exhibitionId || "default_exhibition";
+
+    // New multi-tenant IDs (UIDs)
+    const museumIdFromClient = body.museumId || null;
+    const exhibitionIdFromClient = body.exhibitionId || null;
 
     if (!exhibitId || !question) {
       return jsonResponse(400, { error: "Missing exhibitId or question" });
@@ -254,7 +309,12 @@ exports.handler = async (event) => {
       return jsonResponse(500, { error: "Cannot resolve origin" });
     }
 
-    const museumId = getMuseumIdFromBaseUrl(baseUrl);
+    const { museumId, exhibitionId } = await resolveMuseumAndExhibition({
+      museumId: museumIdFromClient,
+      exhibitionId: exhibitionIdFromClient,
+      baseUrl,
+    });
+
     const monthKey = getMonthKeyUtc();
 
     const qNormRaw = normalizeQuestion(question);
@@ -266,7 +326,8 @@ exports.handler = async (event) => {
       return jsonResponse(404, { error: "Exhibit not found" });
     }
 
-    const cacheKey = `${exhibitId}||${qNorm}`;
+    // Cache must be tenant-aware
+    const cacheKey = `${museumId}||${exhibitionId}||${exhibitId}||${qNorm}`;
     const cachedAnswer = cacheGet(cacheKey);
     if (cachedAnswer) {
       safeTrack({
@@ -459,6 +520,6 @@ ${qNormRaw}
       usage: { inputTokens, outputTokens, totalTokens, openaiCostUsd },
     });
   } catch (err) {
-    return jsonResponse(500, { error: "Server error", details: String(err) });
+    return jsonResponse(500, { error: "Server error", details: String(err?.message || err) });
   }
 };
