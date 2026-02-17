@@ -33,13 +33,40 @@ function supportsTTS() {
   return typeof window !== "undefined" && "speechSynthesis" in window && "SpeechSynthesisUtterance" in window;
 }
 
+function isProbablyLocalStaticServer() {
+  // Comments in English only
+  if (typeof window === "undefined") return false;
+  const host = String(window.location.hostname || "").toLowerCase();
+  return host === "localhost" || host === "127.0.0.1";
+}
+
+function joinUrl(base, path) {
+  // Comments in English only
+  const b = String(base || "").trim();
+  const p = String(path || "").trim();
+
+  if (!b) return p; // relative
+  return `${b.replace(/\/+$/, "")}/${p.replace(/^\/+/, "")}`;
+}
+
+async function safeReadJson(res) {
+  // Comments in English only
+  const ct = String(res.headers?.get?.("content-type") || "");
+  if (!ct.includes("application/json")) return null;
+  return res.json().catch(() => null);
+}
+
 export function createChatClient({
   els,
   exhibitId,
   museumId = null,
   exhibitionId = null,
-  debugMode,
-  mockMode,
+  debugMode = false,
+  mockMode = false,
+
+  // Optional: use this to call production Functions while running locally
+  // Example: "https://museum-chatbot1.netlify.app"
+  functionsBaseUrl = "",
 }) {
   const clientCache = new Map(); // key -> { answer, ts }
 
@@ -122,14 +149,11 @@ export function createChatClient({
     scrollChatLogToBottom(els.chatLog);
   }
 
-  function formatServerError(json) {
-    // Prefer server-provided details to make debugging easy
-    const details = String(json?.details || "").trim();
-    const error = String(json?.error || "").trim();
-
-    if (details) return `שגיאה: ${details}`;
-    if (error) return `שגיאה: ${error}`;
-    return "שגיאת רשת. נסה/י שוב.";
+  function buildChatUrl() {
+    // Comments in English only
+    const basePath = "/.netlify/functions/chat";
+    const full = joinUrl(functionsBaseUrl, basePath);
+    return debugMode ? `${full}?debug=1` : full;
   }
 
   async function ask(question) {
@@ -151,37 +175,52 @@ export function createChatClient({
       return { answer, debug: { mock: true } };
     }
 
-    const url = debugMode ? "/.netlify/functions/chat?debug=1" : "/.netlify/functions/chat";
+    const url = buildChatUrl();
 
     const payload = {
       exhibitId: normId(exhibitId),
       museumId: normId(museumId),
       exhibitionId: normId(exhibitionId),
       question: qNorm,
-      baseUrl: window.location.origin, // CHANGE: make localhost/prod fetch reliable
+
+      // You can uncomment this if you want the Function to always know baseUrl explicitly
+      // baseUrl: typeof window !== "undefined" ? window.location.origin : "",
     };
 
     let res;
-    let json;
-
     try {
       res = await fetch(url, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       });
-
-      json = await res.json().catch(() => null);
-    } catch {
-      return { answer: "שגיאת רשת. נסה/י שוב.", debug: null };
+    } catch (e) {
+      return { answer: "שגיאת רשת. נסה/י שוב.", debug: { fetchError: String(e?.message || e) } };
     }
+
+    // If you're on localhost with a static server (not netlify dev), this usually returns 404/405
+    if ((res.status === 404 || res.status === 405) && isProbablyLocalStaticServer() && !functionsBaseUrl) {
+      return {
+        answer: "נראה שה־Functions לא רצים לוקלית. להרצה מקומית השתמש/י ב־netlify dev, או הגדר/י functionsBaseUrl ל־Production.",
+        debug: { status: res.status, url },
+      };
+    }
+
+    const json = await safeReadJson(res);
 
     if (!res.ok || !json) {
-      // CHANGE: show server error details when available
-      return { answer: formatServerError(json), debug: json?.debug || null };
+      const text = await res.text().catch(() => "");
+      return {
+        answer: "שגיאת שרת. נסה/י שוב.",
+        debug: {
+          status: res.status,
+          url,
+          responseTextPreview: String(text || "").slice(0, 300),
+        },
+      };
     }
 
-    const answer = json.answer || "שגיאת רשת. נסה/י שוב.";
+    const answer = json.answer || "שגיאת שרת. נסה/י שוב.";
     cacheSet(key, answer);
 
     return { answer, debug: json.debug || null };

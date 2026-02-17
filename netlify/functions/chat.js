@@ -37,12 +37,24 @@ function estimateOpenAiCostUsd({ inputTokens, outputTokens }) {
   return Number.isFinite(total) ? total : 0;
 }
 
-function jsonResponse(statusCode, payload) {
+function getCorsHeaders(event) {
+  // Comments in English only
+  const h = event.headers || {};
+  const origin = String(h.origin || "").trim();
+  return {
+    "Access-Control-Allow-Origin": origin || "*",
+    "Access-Control-Allow-Methods": "GET,POST,OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type, Authorization",
+  };
+}
+
+function jsonResponse(event, statusCode, payload) {
   return {
     statusCode,
     headers: {
       "Content-Type": "application/json",
       "Cache-Control": "no-store",
+      ...getCorsHeaders(event),
     },
     body: JSON.stringify(payload),
   };
@@ -161,7 +173,8 @@ function mapPlainButtonToCommand(qNorm) {
 }
 
 function resolveBaseUrl(event, body) {
-  // Prefer explicit baseUrl from client (best for localhost)
+  // Comments in English only
+
   const fromBody = String(body?.baseUrl || "").trim();
   if (fromBody) return fromBody;
 
@@ -227,7 +240,7 @@ async function trackUsage({
   openaiCostUsd,
   fnMs,
 }) {
-  if (!supabase) return;
+  if (!supabase) return { ok: false, reason: "supabase_not_configured" };
 
   const payload = {
     p_museum_id: museumId,
@@ -244,7 +257,11 @@ async function trackUsage({
   };
 
   const { error } = await supabase.rpc("usage_increment", payload);
-  if (error) console.log("usage_increment error:", error);
+  if (error) {
+    console.log("usage_increment error:", error);
+    return { ok: false, reason: "rpc_error", error: error.message };
+  }
+  return { ok: true };
 }
 
 async function resolveMuseumAndExhibition({ museumId, exhibitionId }) {
@@ -344,9 +361,9 @@ async function resolveMuseumAndExhibition({ museumId, exhibitionId }) {
   };
 }
 
-
 function buildDemoAnswer({ exhibit, qNorm, qNormRaw }) {
-  // Demo mode answers without OpenAI
+  // Comments in English only
+
   if (qNorm === "__SUMMARY__") {
     const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
     return limitChars(fullDesc, 700) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
@@ -363,20 +380,51 @@ function buildDemoAnswer({ exhibit, qNorm, qNormRaw }) {
     return buildCreatorAnswer(creatorName, creatorBio);
   }
 
-  // For free questions in demo mode, return a safe fixed response
   return "במצב הדגמה מקומי אני עונה רק מתוך הכפתורים והעובדות שהוזנו. אפשר ללחוץ על אחת האפשרויות למעלה.";
 }
 
 exports.handler = async (event) => {
+  const debugMode = event.queryStringParameters?.debug === "1";
   const t0 = Date.now();
+
+  // Handle CORS preflight
+  if (event.httpMethod === "OPTIONS") {
+    return {
+      statusCode: 204,
+      headers: {
+        ...getCorsHeaders(event),
+        "Cache-Control": "no-store",
+      },
+      body: "",
+    };
+  }
+
+  // Health check (prevents 405 noise in console)
+  if (event.httpMethod === "GET") {
+    return jsonResponse(event, 200, {
+      ok: true,
+      fn: "chat",
+      hasSupabase: !!supabase,
+      hasOpenAiKey: !!process.env.OPENAI_API_KEY,
+      timeUtc: new Date().toISOString(),
+      debugHint: "Use POST for chat. Add ?debug=1 on POST to see debug payload.",
+    });
+  }
+
+  let lastTrackStatus = null;
+
   const safeTrack = (args) => {
     const fnMs = Date.now() - t0;
-    trackUsage({ ...args, fnMs }).catch((e) => console.log("trackUsage failed:", e));
+    trackUsage({ ...args, fnMs })
+      .then((s) => {
+        lastTrackStatus = s;
+      })
+      .catch((e) => console.log("trackUsage failed:", e));
   };
 
   try {
     if (event.httpMethod !== "POST") {
-      return jsonResponse(405, { error: "Method not allowed" });
+      return jsonResponse(event, 405, { error: "Method not allowed", method: event.httpMethod });
     }
 
     const body = JSON.parse(event.body || "{}");
@@ -387,20 +435,15 @@ exports.handler = async (event) => {
     const exhibitionIdFromClient = body.exhibitionId || null;
 
     if (!exhibitId || !question) {
-      return jsonResponse(400, { error: "Missing exhibitId or question" });
+      return jsonResponse(event, 400, { error: "Missing exhibitId or question" });
     }
 
     const baseUrl = resolveBaseUrl(event, body);
     if (!baseUrl) {
-      return jsonResponse(500, { error: "Cannot resolve baseUrl" });
+      return jsonResponse(event, 500, { error: "Cannot resolve baseUrl" });
     }
 
-    const {
-      museumDbId,
-      exhibitionDbId,
-      museumSlug,
-      exhibitionSlug,
-    } = await resolveMuseumAndExhibition({
+    const { museumDbId, exhibitionDbId, museumSlug, exhibitionSlug } = await resolveMuseumAndExhibition({
       museumId: museumIdFromClient,
       exhibitionId: exhibitionIdFromClient,
     });
@@ -418,7 +461,7 @@ exports.handler = async (event) => {
 
     const exhibit = exhibitsData?.exhibits?.[exhibitId];
     if (!exhibit) {
-      return jsonResponse(404, { error: "Exhibit not found" });
+      return jsonResponse(event, 404, { error: "Exhibit not found" });
     }
 
     const cacheKey = `${museumSlug}||${exhibitionSlug}||${exhibitId}||${qNorm}`;
@@ -437,7 +480,27 @@ exports.handler = async (event) => {
         totalTokens: 0,
         openaiCostUsd: 0,
       });
-      return jsonResponse(200, { answer: cachedAnswer, cached: true });
+
+      return jsonResponse(event, 200, {
+        answer: cachedAnswer,
+        cached: true,
+        ...(debugMode
+          ? {
+              debug: {
+                mode: "cache",
+                museumDbId,
+                museumSlug,
+                exhibitionDbId,
+                exhibitionSlug,
+                exhibitId,
+                monthKey,
+                baseUrl,
+                contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                lastTrackStatus,
+              },
+            }
+          : {}),
+      });
     }
 
     const apiKey = process.env.OPENAI_API_KEY;
@@ -461,7 +524,26 @@ exports.handler = async (event) => {
         openaiCostUsd: 0,
       });
 
-      return jsonResponse(200, { answer, demo: true });
+      return jsonResponse(event, 200, {
+        answer,
+        demo: true,
+        ...(debugMode
+          ? {
+              debug: {
+                mode: "demo",
+                museumDbId,
+                museumSlug,
+                exhibitionDbId,
+                exhibitionSlug,
+                exhibitId,
+                monthKey,
+                baseUrl,
+                contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                lastTrackStatus,
+              },
+            }
+          : {}),
+      });
     }
 
     // OpenAI mode
@@ -532,7 +614,26 @@ ${qNormRaw}
         openaiCostUsd: 0,
       });
 
-      return jsonResponse(500, { error: "OpenAI error", details: openaiJson });
+      return jsonResponse(event, 500, {
+        error: "OpenAI error",
+        details: openaiJson,
+        ...(debugMode
+          ? {
+              debug: {
+                mode: "openai_error",
+                museumDbId,
+                museumSlug,
+                exhibitionDbId,
+                exhibitionSlug,
+                exhibitId,
+                monthKey,
+                baseUrl,
+                contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                lastTrackStatus,
+              },
+            }
+          : {}),
+      });
     }
 
     const { inputTokens, outputTokens, totalTokens } = getUsageFromOpenAiResponse(openaiJson);
@@ -555,11 +656,30 @@ ${qNormRaw}
       openaiCostUsd,
     });
 
-    return jsonResponse(200, {
+    return jsonResponse(event, 200, {
       answer,
       usage: { inputTokens, outputTokens, totalTokens, openaiCostUsd },
+      ...(debugMode
+        ? {
+            debug: {
+              mode: "openai_ok",
+              museumDbId,
+              museumSlug,
+              exhibitionDbId,
+              exhibitionSlug,
+              exhibitId,
+              monthKey,
+              baseUrl,
+              contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+              lastTrackStatus,
+            },
+          }
+        : {}),
     });
   } catch (err) {
-    return jsonResponse(500, { error: "Server error", details: String(err?.message || err) });
+    return jsonResponse(event, 500, {
+      error: "Server error",
+      details: String(err?.message || err),
+    });
   }
 };

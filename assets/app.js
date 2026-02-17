@@ -286,6 +286,6 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
 
   chat.appendMessage(
     "assistant",
-    "שלום 🙂 אפשר לשאול אותי שאלות על המיצג, או להשתמש בכפתורים למעלה לקבלת מידע מהיר."
+    "שלום :) אפשר לשאול אותי שאלות על המיצג, או להשתמש בכפתורים למעלה לקבלת מידע מהיר."
   );
 })();
