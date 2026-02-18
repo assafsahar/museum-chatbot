@@ -188,6 +188,11 @@ async function readMonthlyBreakdown({ museumDbId, exhibitionDbId, monthKey }) {
   }));
 }
 
+function sumBreakdownTotal(exhibits) {
+  const rows = Array.isArray(exhibits) ? exhibits : [];
+  return rows.reduce((sum, row) => sum + Number(row?.questionsTotal ?? 0), 0);
+}
+
 exports.handler = async (event) => {
   const debugMode = event.queryStringParameters?.debug === "1";
   const breakdown = event.queryStringParameters?.breakdown === "1";
@@ -237,7 +242,19 @@ exports.handler = async (event) => {
     debug.tenant = debugMode ? { museumId, exhibitionId, museumDbId, exhibitionDbId, museumSlug, exhibitionSlug } : undefined;
 
     debug.stage = "read_total";
-    const questionsTotal = await readMonthlyTotal({ museumDbId, exhibitionDbId, monthKey });
+    let questionsTotal = await readMonthlyTotal({ museumDbId, exhibitionDbId, monthKey });
+    let exhibits = null;
+
+    // Fallback: if monthly total is zero but per-exhibit rows exist, derive total from breakdown.
+    if (questionsTotal === 0 && exhibitionDbId) {
+      debug.stage = "read_breakdown_fallback";
+      exhibits = await readMonthlyBreakdown({ museumDbId, exhibitionDbId, monthKey });
+      const fallbackTotal = sumBreakdownTotal(exhibits);
+      if (fallbackTotal > 0) {
+        questionsTotal = fallbackTotal;
+        debug.totalSource = debugMode ? "breakdown_fallback" : undefined;
+      }
+    }
 
     if (!breakdown) {
       debug.ok = true;
@@ -249,8 +266,10 @@ exports.handler = async (event) => {
       );
     }
 
-    debug.stage = "read_breakdown";
-    const exhibits = await readMonthlyBreakdown({ museumDbId, exhibitionDbId, monthKey });
+    if (!exhibits) {
+      debug.stage = "read_breakdown";
+      exhibits = await readMonthlyBreakdown({ museumDbId, exhibitionDbId, monthKey });
+    }
 
     debug.ok = true;
     debug.ms = Date.now() - t0;

@@ -1,5 +1,10 @@
 # Local Netlify folder
 .netlify
 .env
+.env.production
+.env.staging-readonly
+*.tmp.log
+.tmp-netlify-offline.err.log
+.tmp-netlify-offline.out.log
 node_modules/
 .DS_Store
