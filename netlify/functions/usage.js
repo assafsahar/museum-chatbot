@@ -245,15 +245,12 @@ exports.handler = async (event) => {
     let questionsTotal = await readMonthlyTotal({ museumDbId, exhibitionDbId, monthKey });
     let exhibits = null;
 
-    // Fallback: if monthly total is zero but per-exhibit rows exist, derive total from breakdown.
-    if (questionsTotal === 0 && exhibitionDbId) {
-      debug.stage = "read_breakdown_fallback";
+    // For exhibition-scoped requests, derive total from per-exhibit rows to avoid stale museum-level totals.
+    if (exhibitionDbId) {
+      debug.stage = "read_breakdown_for_total";
       exhibits = await readMonthlyBreakdown({ museumDbId, exhibitionDbId, monthKey });
-      const fallbackTotal = sumBreakdownTotal(exhibits);
-      if (fallbackTotal > 0) {
-        questionsTotal = fallbackTotal;
-        debug.totalSource = debugMode ? "breakdown_fallback" : undefined;
-      }
+      questionsTotal = sumBreakdownTotal(exhibits);
+      debug.totalSource = debugMode ? "breakdown_authoritative" : undefined;
     }
 
     if (!breakdown) {
