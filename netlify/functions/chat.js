@@ -14,7 +14,8 @@ const supabase =
 const OPENAI_INPUT_USD_PER_1M = Number(process.env.OPENAI_INPUT_USD_PER_1M || 0.25);
 const OPENAI_OUTPUT_USD_PER_1M = Number(process.env.OPENAI_OUTPUT_USD_PER_1M || 1.0);
 const APP_ENV = String(process.env.APP_ENV || "production").trim() || "production";
-const ALLOW_USAGE_WRITE = String(process.env.ALLOW_USAGE_WRITE || "true").trim().toLowerCase() === "true";
+const NETLIFY_CONTEXT = String(process.env.CONTEXT || "").trim() || "unknown";
+const ALLOW_USAGE_WRITE = String(process.env.ALLOW_USAGE_WRITE || "").trim().toLowerCase() === "true";
 
 const EXHIBITS_TTL_MS = 60 * 1000; // 1 minute
 const ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -408,6 +409,7 @@ exports.handler = async (event) => {
       ok: true,
       fn: "chat",
       appEnv: APP_ENV,
+      netlifyContext: NETLIFY_CONTEXT,
       usageWriteEnabled: ALLOW_USAGE_WRITE,
       hasSupabase: !!supabase,
       hasOpenAiKey: !!process.env.OPENAI_API_KEY,
