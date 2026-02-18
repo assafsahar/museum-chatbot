@@ -13,6 +13,8 @@ const supabase =
 
 const OPENAI_INPUT_USD_PER_1M = Number(process.env.OPENAI_INPUT_USD_PER_1M || 0.25);
 const OPENAI_OUTPUT_USD_PER_1M = Number(process.env.OPENAI_OUTPUT_USD_PER_1M || 1.0);
+const APP_ENV = String(process.env.APP_ENV || "production").trim() || "production";
+const ALLOW_USAGE_WRITE = String(process.env.ALLOW_USAGE_WRITE || "true").trim().toLowerCase() === "true";
 
 const EXHIBITS_TTL_MS = 60 * 1000; // 1 minute
 const ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
@@ -240,6 +242,7 @@ async function trackUsage({
   openaiCostUsd,
   fnMs,
 }) {
+  if (!ALLOW_USAGE_WRITE) return { ok: false, reason: "usage_write_disabled" };
   if (!supabase) return { ok: false, reason: "supabase_not_configured" };
 
   const payload = {
@@ -404,6 +407,8 @@ exports.handler = async (event) => {
     return jsonResponse(event, 200, {
       ok: true,
       fn: "chat",
+      appEnv: APP_ENV,
+      usageWriteEnabled: ALLOW_USAGE_WRITE,
       hasSupabase: !!supabase,
       hasOpenAiKey: !!process.env.OPENAI_API_KEY,
       timeUtc: new Date().toISOString(),
