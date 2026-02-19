@@ -60,12 +60,7 @@ export function setTags(els, exhibit, onTagClicked) {
   const tags = Array.isArray(exhibit?.tags) ? exhibit.tags : [];
   els.tags.innerHTML = "";
 
-  const allowed = new Set(["תקציר קצר", "טכניקות", "חומרים", "שנת יצירה", "אוצר/ת", "מי היוצר/ת"]);
-  const filtered = tags.filter((t) => allowed.has(String(t).trim()));
-
-  const finalTags = filtered.length
-    ? filtered
-    : ["תקציר קצר", "טכניקות", "חומרים", "שנת יצירה", "אוצר/ת", "מי היוצר/ת"];
+  const finalTags = tags.length ? tags : ["תקציר קצר"];
 
   finalTags.forEach((t) => {
     const btn = document.createElement("button");

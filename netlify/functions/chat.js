@@ -18,7 +18,8 @@ const NETLIFY_CONTEXT = String(process.env.CONTEXT || "").trim() || "unknown";
 const ALLOW_USAGE_WRITE = String(process.env.ALLOW_USAGE_WRITE || "").trim().toLowerCase() === "true";
 
 const EXHIBITS_TTL_MS = 60 * 1000; // 1 minute
-const ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const AI_ANSWER_TTL_MS = 6 * 60 * 60 * 1000; // 6 hours
+const FACT_ANSWER_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 const MAX_CACHE_ITEMS = 500;
 
 let exhibitsCache = { key: null, fetchedAt: 0, data: null };
@@ -74,19 +75,22 @@ function cacheGet(key) {
   const v = answerCache.get(key);
   if (!v) return null;
 
-  if (nowMs() - v.ts > ANSWER_TTL_MS) {
+  const ttlMs = Number(v.ttlMs || AI_ANSWER_TTL_MS);
+  if (nowMs() - v.ts > ttlMs) {
     answerCache.delete(key);
     return null;
   }
-  return v.answer;
+  return v;
 }
 
-function cacheSet(key, answer) {
+function cacheSet(key, answer, kind) {
   if (answerCache.size >= MAX_CACHE_ITEMS) {
     const firstKey = answerCache.keys().next().value;
     if (firstKey) answerCache.delete(firstKey);
   }
-  answerCache.set(key, { answer, ts: nowMs() });
+  const cacheKind = kind === "fact" ? "fact" : "ai";
+  const ttlMs = cacheKind === "fact" ? FACT_ANSWER_TTL_MS : AI_ANSWER_TTL_MS;
+  answerCache.set(key, { answer, ts: nowMs(), kind: cacheKind, ttlMs });
 }
 
 function stripHtml(html) {
@@ -130,7 +134,10 @@ function getFactAnswer(exhibit, factKey) {
 
   const found = facts.find((f) => String(f).trim().startsWith(`${key}:`));
   if (!found) return "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
-  return String(found).trim();
+  const raw = String(found).trim();
+  const idx = raw.indexOf(":");
+  if (idx === -1) return raw;
+  return raw.slice(idx + 1).trim();
 }
 
 function isCreatorQuestion(q) {
@@ -173,6 +180,43 @@ function mapPlainButtonToCommand(qNorm) {
   if (qNorm === "שנת יצירה") return "__FACT:שנת יצירה__";
   if (qNorm === "אוצר/ת") return "__FACT:אוצר/ת__";
   return qNorm;
+}
+
+function getFactKeyFromCommand(qNorm) {
+  const s = String(qNorm || "");
+  if (s.startsWith("__FACT:") && s.endsWith("__")) {
+    return s.replace(/^__FACT:/, "").replace(/__$/, "").trim();
+  }
+  return "";
+}
+
+function resolveFactKeyByTag(exhibit, qNormRaw) {
+  const tags = Array.isArray(exhibit?.tags) ? exhibit.tags : [];
+  const q = normalizeQuestion(qNormRaw);
+  if (!q) return "";
+
+  for (const tag of tags) {
+    const t = normalizeQuestion(tag);
+    if (t && t === q) return String(tag).trim();
+  }
+  return "";
+}
+
+function toFactsText(facts, maxItems) {
+  const rows = Array.isArray(facts) ? facts : [];
+  return rows
+    .slice(0, Math.max(0, Number(maxItems || 0)))
+    .map((f) => String(f || "").trim())
+    .filter(Boolean)
+    .join("\n");
+}
+
+function toCuratorGuidelines(notes, maxItems) {
+  const rows = Array.isArray(notes) ? notes : [];
+  return rows
+    .slice(0, Math.max(0, Number(maxItems || 0)))
+    .map((n) => limitChars(String(n || "").trim(), 180))
+    .filter(Boolean);
 }
 
 function resolveBaseUrl(event, body) {
@@ -471,16 +515,21 @@ exports.handler = async (event) => {
       return jsonResponse(event, 404, { error: "Exhibit not found" });
     }
 
-    const cacheKey = `${museumSlug}||${exhibitionSlug}||${exhibitId}||${qNorm}`;
+    const factKeyFromCommand = getFactKeyFromCommand(qNorm);
+    const factKeyFromTag = resolveFactKeyByTag(exhibit, qNormRaw);
+    const factKey = factKeyFromCommand || factKeyFromTag || "";
 
-    const cachedAnswer = cacheGet(cacheKey);
-    if (cachedAnswer) {
+    const cacheQuestionKey = factKey ? `__FACT:${factKey}__` : qNorm;
+    const cacheKey = `${museumSlug}||${exhibitionSlug}||${exhibitId}||${cacheQuestionKey}`;
+
+    const cached = cacheGet(cacheKey);
+    if (cached) {
       safeTrack({
         museumId: museumDbId,
         monthKey,
         exhibitId,
         exhibitionId: exhibitionDbId,
-        mode: "fast",
+        mode: cached.kind === "fact" ? "fast" : "cache",
         cached: true,
         inputTokens: 0,
         outputTokens: 0,
@@ -489,12 +538,53 @@ exports.handler = async (event) => {
       });
 
       return jsonResponse(event, 200, {
-        answer: cachedAnswer,
+        answer: cached.answer,
         cached: true,
         ...(debugMode
           ? {
               debug: {
-                mode: "cache",
+                mode: cached.kind === "fact" ? "fast_cached_fact" : "cache",
+                museumDbId,
+                museumSlug,
+                exhibitionDbId,
+                exhibitionSlug,
+                exhibitId,
+                monthKey,
+                baseUrl,
+                contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                lastTrackStatus,
+              },
+            }
+          : {}),
+      });
+    }
+
+    // Fast path: exact tag/fact buttons are answered from facts without OpenAI.
+    if (factKey) {
+      const answer = getFactAnswer(exhibit, factKey);
+      cacheSet(cacheKey, answer, "fact");
+
+      safeTrack({
+        museumId: museumDbId,
+        monthKey,
+        exhibitId,
+        exhibitionId: exhibitionDbId,
+        mode: "fast",
+        cached: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        openaiCostUsd: 0,
+      });
+
+      return jsonResponse(event, 200, {
+        answer,
+        fast: true,
+        ...(debugMode
+          ? {
+              debug: {
+                mode: "fast_fact",
+                factKey,
                 museumDbId,
                 museumSlug,
                 exhibitionDbId,
@@ -516,7 +606,7 @@ exports.handler = async (event) => {
     if (!apiKey) {
       const answer = buildDemoAnswer({ exhibit, qNorm, qNormRaw });
 
-      cacheSet(cacheKey, answer);
+      cacheSet(cacheKey, answer, "ai");
 
       safeTrack({
         museumId: museumDbId,
@@ -556,17 +646,17 @@ exports.handler = async (event) => {
     // OpenAI mode
     const exhibitionSummary = exhibitsData?.museum?.exhibitionSummary || "";
     const fullDesc = stripHtml(exhibit.exhibitDescriptionHtml || "");
-    const exhibitSummary = limitChars(fullDesc, 1500);
+    const exhibitSummary = limitChars(fullDesc, 900);
 
     const context = {
       exhibitionSummary,
       creatorName: exhibit.creatorName || "",
-      creatorBio: exhibit.creatorBio || "",
+      creatorBio: limitChars(exhibit.creatorBio || "", 220),
       title: exhibit.title,
       subtitle: exhibit.subtitle,
       tags: exhibit.tags,
-      facts: exhibit.facts,
-      curatorNotes: exhibit.curatorNotes,
+      factsText: toFactsText(exhibit.facts, 12),
+      curatorGuidelines: toCuratorGuidelines(exhibit.curatorNotes, 3),
       exhibitSummary,
     };
 
@@ -603,11 +693,15 @@ ${qNormRaw}
           { role: "user", content: userPrompt },
         ],
         temperature: 0.2,
+        max_output_tokens: 160,
       }),
     });
 
     const openaiJson = await openaiRes.json();
     if (!openaiRes.ok) {
+      const fallbackAnswer = buildDemoAnswer({ exhibit, qNorm, qNormRaw });
+      cacheSet(cacheKey, fallbackAnswer, "ai");
+
       safeTrack({
         museumId: museumDbId,
         monthKey,
@@ -621,13 +715,14 @@ ${qNormRaw}
         openaiCostUsd: 0,
       });
 
-      return jsonResponse(event, 500, {
-        error: "OpenAI error",
-        details: openaiJson,
+      return jsonResponse(event, 200, {
+        answer: fallbackAnswer,
+        degraded: true,
         ...(debugMode
           ? {
               debug: {
-                mode: "openai_error",
+                mode: "openai_error_fallback",
+                openaiError: openaiJson,
                 museumDbId,
                 museumSlug,
                 exhibitionDbId,
@@ -648,7 +743,7 @@ ${qNormRaw}
 
     const answer = extractText(openaiJson) || "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
 
-    cacheSet(cacheKey, answer);
+    cacheSet(cacheKey, answer, "ai");
 
     safeTrack({
       museumId: museumDbId,
