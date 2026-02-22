@@ -2,9 +2,12 @@
 .netlify
 .env
 .env.production
+.env.staging
 .env.staging-readonly
 *.tmp.log
 .tmp-netlify-offline.err.log
 .tmp-netlify-offline.out.log
+schema_public.sql
+seed_core.sql
 node_modules/
 .DS_Store
