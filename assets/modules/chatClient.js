@@ -167,12 +167,12 @@ export function createChatClient({
     });
 
     const cached = cacheGet(key);
-    if (cached) return { answer: cached, debug: { clientCache: true } };
+    if (cached) return { answer: cached, debug: { clientCache: true }, quotaWarning: null };
 
     if (mockMode) {
       const answer = `מצב הדגמה: "${qNorm}"`;
       cacheSet(key, answer);
-      return { answer, debug: { mock: true } };
+      return { answer, debug: { mock: true }, quotaWarning: null };
     }
 
     const url = buildChatUrl();
@@ -195,7 +195,7 @@ export function createChatClient({
         body: JSON.stringify(payload),
       });
     } catch (e) {
-      return { answer: "שגיאת רשת. נסה/י שוב.", debug: { fetchError: String(e?.message || e) } };
+      return { answer: "שגיאת רשת. נסה/י שוב.", debug: { fetchError: String(e?.message || e) }, quotaWarning: null };
     }
 
     // If you're on localhost with a static server (not netlify dev), this usually returns 404/405
@@ -203,6 +203,7 @@ export function createChatClient({
       return {
         answer: "נראה שה־Functions לא רצים לוקלית. להרצה מקומית השתמש/י ב־netlify dev, או הגדר/י functionsBaseUrl ל־Production.",
         debug: { status: res.status, url },
+        quotaWarning: null,
       };
     }
 
@@ -217,13 +218,14 @@ export function createChatClient({
           url,
           responseTextPreview: String(text || "").slice(0, 300),
         },
+        quotaWarning: null,
       };
     }
 
     const answer = json.answer || "שגיאת שרת. נסה/י שוב.";
     cacheSet(key, answer);
 
-    return { answer, debug: json.debug || null };
+    return { answer, debug: json.debug || null, quotaWarning: json.quotaWarning || null };
   }
 
   async function onSend() {
@@ -234,7 +236,7 @@ export function createChatClient({
     appendMessage("user", q);
 
     const pending = appendMessage("assistant", "רגע…");
-    const { answer } = await ask(q);
+    const { answer, quotaWarning } = await ask(q);
 
     const bubble = pending.querySelector(".bubble");
     if (bubble) bubble.textContent = answer;
@@ -243,6 +245,18 @@ export function createChatClient({
     const oldControls = pending.querySelector(".ttsControls");
     if (oldControls) oldControls.remove();
     addTtsControls(pending, answer);
+
+    if (quotaWarning?.message) {
+      const extra = [];
+      if (Number.isFinite(Number(quotaWarning.remainingQuestions))) {
+        extra.push(`נותרו ${quotaWarning.remainingQuestions} שאלות`);
+      }
+      if (Number.isFinite(Number(quotaWarning.percentUsed))) {
+        extra.push(`${quotaWarning.percentUsed}% נוצל`);
+      }
+      const suffix = extra.length ? ` (${extra.join(" · ")})` : "";
+      appendMessage("assistant", `${quotaWarning.message}${suffix}`);
+    }
 
     scrollToBottom();
     ensureInputVisibleOnMobile(els.q);

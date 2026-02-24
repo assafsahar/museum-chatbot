@@ -188,6 +188,40 @@ async function readMonthlyBreakdown({ museumDbId, exhibitionDbId, monthKey }) {
   }));
 }
 
+async function readQuotaStatus({ museumDbId }) {
+  if (!supabase || !museumDbId) return null;
+
+  const { data, error } = await supabase.rpc("quota_get_status", {
+    p_museum_id: museumDbId,
+  });
+
+  if (error) {
+    const msg = String(error.message || "");
+    if (/quota_get_status/i.test(msg) && /(does not exist|function .* not found)/i.test(msg)) {
+      return null;
+    }
+    throw new Error(`quota_get_status failed: ${error.message}`);
+  }
+
+  const row = Array.isArray(data) ? data[0] : data;
+  if (!row) return null;
+
+  return {
+    quotaEnabled: !!row.quota_enabled,
+    isActive: !!row.is_active,
+    blockOnExhaustion: !!row.block_on_exhaustion,
+    periodType: row.period_type || null,
+    periodStartAt: row.period_start_at || null,
+    periodEndAt: row.period_end_at || null,
+    quotaLimitQuestions: Number(row.quota_limit_questions ?? 0),
+    usedQuestions: Number(row.used_questions ?? 0),
+    remainingQuestions: Number(row.remaining_questions ?? 0),
+    percentUsed: Number(row.percent_used ?? 0),
+    shouldWarn: !!row.should_warn,
+    shouldBlock: !!row.should_block,
+  };
+}
+
 function sumBreakdownTotal(exhibits) {
   const rows = Array.isArray(exhibits) ? exhibits : [];
   return rows.reduce((sum, row) => sum + Number(row?.questionsTotal ?? 0), 0);
@@ -244,6 +278,7 @@ exports.handler = async (event) => {
     debug.stage = "read_total";
     let questionsTotal = await readMonthlyTotal({ museumDbId, exhibitionDbId, monthKey });
     let exhibits = null;
+    let quota = null;
 
     // For exhibition-scoped requests, derive total from per-exhibit rows to avoid stale museum-level totals.
     if (exhibitionDbId) {
@@ -253,12 +288,15 @@ exports.handler = async (event) => {
       debug.totalSource = debugMode ? "breakdown_authoritative" : undefined;
     }
 
+    debug.stage = "read_quota";
+    quota = await readQuotaStatus({ museumDbId });
+
     if (!breakdown) {
       debug.ok = true;
       debug.ms = Date.now() - t0;
       return jsonResponse(
         200,
-        { monthKey, questionsTotal, debug: debugMode ? debug : undefined },
+        { monthKey, questionsTotal, quota: quota || undefined, debug: debugMode ? debug : undefined },
         corsHeaders(event)
       );
     }
@@ -273,7 +311,7 @@ exports.handler = async (event) => {
 
     return jsonResponse(
       200,
-      { monthKey, questionsTotal, exhibits, debug: debugMode ? debug : undefined },
+      { monthKey, questionsTotal, exhibits, quota: quota || undefined, debug: debugMode ? debug : undefined },
       corsHeaders(event)
     );
   } catch (err) {

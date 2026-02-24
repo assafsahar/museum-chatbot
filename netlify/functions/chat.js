@@ -128,6 +128,78 @@ function getUsageFromOpenAiResponse(openaiJson) {
   return { inputTokens, outputTokens, totalTokens };
 }
 
+async function readQuotaStatus(museumDbId) {
+  if (!supabase || !museumDbId) return null;
+
+  try {
+    const { data, error } = await supabase.rpc("quota_get_status", {
+      p_museum_id: museumDbId,
+    });
+
+    if (error) {
+      console.log("quota_get_status error:", error);
+      return null; // Fail-open for chat
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row) return null;
+
+    return {
+      quotaEnabled: !!row.quota_enabled,
+      isActive: !!row.is_active,
+      blockOnExhaustion: !!row.block_on_exhaustion,
+      periodType: row.period_type || null,
+      quotaLimitQuestions: Number(row.quota_limit_questions ?? 0),
+      usedQuestions: Number(row.used_questions ?? 0),
+      remainingQuestions: Number(row.remaining_questions ?? 0),
+      percentUsed: Number(row.percent_used ?? 0),
+      shouldWarn: !!row.should_warn,
+      shouldBlock: !!row.should_block,
+      periodStartAt: row.period_start_at || null,
+      periodEndAt: row.period_end_at || null,
+    };
+  } catch (e) {
+    console.log("quota_get_status unexpected error:", e);
+    return null; // Fail-open for chat
+  }
+}
+
+function buildQuotaWarningPayload(quotaStatus) {
+  if (!quotaStatus || !quotaStatus.shouldWarn) return {};
+
+  return {
+    quotaWarning: {
+      message: "התקרבתם למכסת השאלות לתקופה הנוכחית.",
+      percentUsed: quotaStatus.percentUsed,
+      remainingQuestions: quotaStatus.remainingQuestions,
+      periodType: quotaStatus.periodType,
+    },
+  };
+}
+
+function buildQuotaBlockedPayload(quotaStatus) {
+  const remaining = Number(quotaStatus?.remainingQuestions ?? 0);
+  const periodType = String(quotaStatus?.periodType || "");
+
+  let periodLabel = "לתקופה הנוכחית";
+  if (periodType === "monthly") periodLabel = "לחודש הנוכחי";
+  if (periodType === "yearly") periodLabel = "לשנה הנוכחית";
+
+  const message =
+    remaining > 0
+      ? `השימוש בצ'אט מוגבל כרגע לפי בנק השאלות ${periodLabel}. נותרו ${remaining} שאלות.`
+      : `הגענו למכסת השאלות ${periodLabel}. השימוש בצ'אט חסום זמנית.`;
+
+  return {
+    quotaBlocked: {
+      message,
+      percentUsed: Number(quotaStatus?.percentUsed ?? 0),
+      remainingQuestions: Math.max(remaining, 0),
+      periodType: quotaStatus?.periodType || null,
+    },
+  };
+}
+
 function getFactAnswer(exhibit, factKey) {
   const facts = Array.isArray(exhibit?.facts) ? exhibit.facts : [];
   const key = String(factKey || "").trim();
@@ -500,6 +572,7 @@ exports.handler = async (event) => {
     });
 
     const monthKey = getMonthKeyUtc();
+    const quotaStatus = await readQuotaStatus(museumDbId);
 
     const qNormRaw = normalizeQuestion(question);
     const qNorm = mapPlainButtonToCommand(qNormRaw);
@@ -513,6 +586,31 @@ exports.handler = async (event) => {
     const exhibit = exhibitsData?.exhibits?.[exhibitId];
     if (!exhibit) {
       return jsonResponse(event, 404, { error: "Exhibit not found" });
+    }
+
+    if (quotaStatus?.shouldBlock) {
+      return jsonResponse(event, 200, {
+        answer: buildQuotaBlockedPayload(quotaStatus).quotaBlocked.message,
+        blocked: true,
+        ...buildQuotaBlockedPayload(quotaStatus),
+        ...(debugMode
+          ? {
+              debug: {
+                mode: "quota_blocked",
+                museumDbId,
+                museumSlug,
+                exhibitionDbId,
+                exhibitionSlug,
+                exhibitId,
+                monthKey,
+                baseUrl,
+                contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                quotaStatus,
+                lastTrackStatus,
+              },
+            }
+          : {}),
+      });
     }
 
     const factKeyFromCommand = getFactKeyFromCommand(qNorm);
@@ -540,6 +638,7 @@ exports.handler = async (event) => {
       return jsonResponse(event, 200, {
         answer: cached.answer,
         cached: true,
+        ...buildQuotaWarningPayload(quotaStatus),
         ...(debugMode
           ? {
               debug: {
@@ -552,6 +651,7 @@ exports.handler = async (event) => {
                 monthKey,
                 baseUrl,
                 contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                quotaStatus,
                 lastTrackStatus,
               },
             }
@@ -580,6 +680,7 @@ exports.handler = async (event) => {
       return jsonResponse(event, 200, {
         answer,
         fast: true,
+        ...buildQuotaWarningPayload(quotaStatus),
         ...(debugMode
           ? {
               debug: {
@@ -593,6 +694,7 @@ exports.handler = async (event) => {
                 monthKey,
                 baseUrl,
                 contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                quotaStatus,
                 lastTrackStatus,
               },
             }
@@ -624,6 +726,7 @@ exports.handler = async (event) => {
       return jsonResponse(event, 200, {
         answer,
         demo: true,
+        ...buildQuotaWarningPayload(quotaStatus),
         ...(debugMode
           ? {
               debug: {
@@ -636,6 +739,7 @@ exports.handler = async (event) => {
                 monthKey,
                 baseUrl,
                 contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                quotaStatus,
                 lastTrackStatus,
               },
             }
@@ -718,6 +822,7 @@ ${qNormRaw}
       return jsonResponse(event, 200, {
         answer: fallbackAnswer,
         degraded: true,
+        ...buildQuotaWarningPayload(quotaStatus),
         ...(debugMode
           ? {
               debug: {
@@ -731,6 +836,7 @@ ${qNormRaw}
                 monthKey,
                 baseUrl,
                 contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                quotaStatus,
                 lastTrackStatus,
               },
             }
@@ -761,6 +867,7 @@ ${qNormRaw}
     return jsonResponse(event, 200, {
       answer,
       usage: { inputTokens, outputTokens, totalTokens, openaiCostUsd },
+      ...buildQuotaWarningPayload(quotaStatus),
       ...(debugMode
         ? {
             debug: {
@@ -773,6 +880,7 @@ ${qNormRaw}
               monthKey,
               baseUrl,
               contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+              quotaStatus,
               lastTrackStatus,
             },
           }

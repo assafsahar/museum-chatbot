@@ -100,6 +100,75 @@
   // Load usage pill (monthly questions count)
   const usageCountEl = document.getElementById("usageCount");
   const usageMonthEl = document.getElementById("usageMonth");
+  const usagePillEl = document.querySelector(".usage-pill");
+
+  function renderQuotaHint(quota) {
+    if (!usagePillEl) return;
+
+    let hintEl = document.getElementById("usageQuotaHint");
+    if (!hintEl) {
+      hintEl = document.createElement("div");
+      hintEl.id = "usageQuotaHint";
+      hintEl.className = "small";
+      hintEl.style.marginTop = "6px";
+      hintEl.style.textAlign = "center";
+      usagePillEl.appendChild(hintEl);
+    }
+
+    let badgeEl = document.getElementById("usageQuotaBadge");
+    if (!badgeEl) {
+      badgeEl = document.createElement("div");
+      badgeEl.id = "usageQuotaBadge";
+      badgeEl.className = "small";
+      badgeEl.style.marginTop = "6px";
+      badgeEl.style.textAlign = "center";
+      badgeEl.style.fontWeight = "700";
+      badgeEl.style.display = "inline-block";
+      badgeEl.style.padding = "2px 8px";
+      badgeEl.style.borderRadius = "999px";
+      badgeEl.style.border = "1px solid #d9deea";
+      badgeEl.style.background = "#f3f6fb";
+      badgeEl.style.color = "#46506a";
+      badgeEl.style.marginInline = "auto";
+      badgeEl.style.width = "fit-content";
+      usagePillEl.appendChild(badgeEl);
+    }
+
+    if (!quota || !quota.quotaEnabled || !quota.isActive) {
+      hintEl.textContent = "";
+      badgeEl.textContent = "";
+      badgeEl.style.display = "none";
+      return;
+    }
+
+    const used = Number(quota.usedQuestions ?? 0);
+    const limit = Number(quota.quotaLimitQuestions ?? 0);
+    const pct = Number(quota.percentUsed ?? 0);
+    const status = quota.shouldBlock ? "חסום" : quota.shouldWarn ? "אזהרה" : "תקין";
+
+    if (status === "חסום") {
+      badgeEl.style.display = "inline-block";
+      badgeEl.style.background = "#fdecec";
+      badgeEl.style.borderColor = "#f2c3c3";
+      badgeEl.style.color = "#b42318";
+    } else if (status === "אזהרה") {
+      badgeEl.style.display = "inline-block";
+      badgeEl.style.background = "#fff4e5";
+      badgeEl.style.borderColor = "#f6d19b";
+      badgeEl.style.color = "#b54708";
+    } else {
+      badgeEl.style.display = "inline-block";
+      badgeEl.style.background = "#edf7ed";
+      badgeEl.style.borderColor = "#b7dfb9";
+      badgeEl.style.color = "#1f7a35";
+    }
+    badgeEl.textContent = status;
+
+    const line1 = Number.isFinite(limit) && limit > 0 ? `בנק שאלות: ${used}/${limit}` : `בנק שאלות: ${used}`;
+    const line2 = Number.isFinite(pct) ? `ניצול: ${pct}%` : "";
+    hintEl.style.color = quota.shouldBlock ? "#b42318" : quota.shouldWarn ? "#b54708" : "#46506a";
+    hintEl.textContent = line2 ? `${line1} | ${line2}` : line1;
+  }
 
   try {
     const qs = buildQuery({});
@@ -110,9 +179,11 @@
 
     if (usageCountEl) usageCountEl.textContent = String(usageJson?.questionsTotal ?? 0);
     if (usageMonthEl) usageMonthEl.textContent = String(usageJson?.monthKey ?? "—");
+    renderQuotaHint(usageJson?.quota || null);
   } catch {
     if (usageCountEl) usageCountEl.textContent = "—";
     if (usageMonthEl) usageMonthEl.textContent = "—";
+    renderQuotaHint(null);
   }
 
   // Usage breakdown (monthly per exhibit)
