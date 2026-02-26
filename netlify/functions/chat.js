@@ -293,6 +293,19 @@ function toCuratorGuidelines(notes, maxItems) {
     .filter(Boolean);
 }
 
+function toHiddenContextText(value, maxItems) {
+  if (Array.isArray(value)) {
+    return value
+      .slice(0, Math.max(0, Number(maxItems || 0)))
+      .map((v) => limitChars(String(v || "").trim(), 260))
+      .filter(Boolean)
+      .join("\n");
+  }
+
+  const s = String(value || "").trim();
+  return s ? limitChars(s, 1200) : "";
+}
+
 function resolveBaseUrl(event, body) {
   // Comments in English only
 
@@ -762,6 +775,10 @@ exports.handler = async (event) => {
       subtitle: exhibit.subtitle,
       tags: exhibit.tags,
       factsText: toFactsText(exhibit.facts, 12),
+      hiddenContextText: toHiddenContextText(
+        exhibit.hiddenContext || exhibit.internalContext || exhibit.hiddenDescription,
+        8
+      ),
       curatorGuidelines: toCuratorGuidelines(exhibit.curatorNotes, 3),
       exhibitSummary,
     };
