@@ -717,6 +717,48 @@ exports.handler = async (event) => {
       });
     }
 
+    // Fast path: summary button should also bypass OpenAI.
+    if (qNorm === "__SUMMARY__") {
+      const answer = buildDemoAnswer({ exhibit, qNorm, qNormRaw });
+      cacheSet(cacheKey, answer, "fact");
+
+      safeTrack({
+        museumId: museumDbId,
+        monthKey,
+        exhibitId,
+        exhibitionId: exhibitionDbId,
+        mode: "fast",
+        cached: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        openaiCostUsd: 0,
+      });
+
+      return jsonResponse(event, 200, {
+        answer,
+        fast: true,
+        ...buildQuotaWarningPayload(quotaStatus),
+        ...(debugMode
+          ? {
+              debug: {
+                mode: "fast_summary",
+                museumDbId,
+                museumSlug,
+                exhibitionDbId,
+                exhibitionSlug,
+                exhibitId,
+                monthKey,
+                baseUrl,
+                contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                quotaStatus,
+                lastTrackStatus,
+              },
+            }
+          : {}),
+      });
+    }
+
     const apiKey = process.env.OPENAI_API_KEY;
 
     // Demo mode: if no key, answer safely without OpenAI
