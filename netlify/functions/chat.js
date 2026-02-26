@@ -93,6 +93,33 @@ function cacheSet(key, answer, kind) {
   answerCache.set(key, { answer, ts: nowMs(), kind: cacheKind, ttlMs });
 }
 
+function simpleHash(input) {
+  const s = String(input || "");
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i += 1) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return (h >>> 0).toString(36);
+}
+
+function buildExhibitCacheVersion(exhibit) {
+  if (!exhibit || typeof exhibit !== "object") return "noex";
+  const payload = {
+    title: exhibit.title || "",
+    subtitle: exhibit.subtitle || "",
+    creatorName: exhibit.creatorName || "",
+    creatorBio: exhibit.creatorBio || "",
+    exhibitDescriptionHtml: exhibit.exhibitDescriptionHtml || "",
+    facts: Array.isArray(exhibit.facts) ? exhibit.facts : [],
+    tags: Array.isArray(exhibit.tags) ? exhibit.tags : [],
+    curatorNotes: Array.isArray(exhibit.curatorNotes) ? exhibit.curatorNotes : [],
+    hiddenContext:
+      exhibit.hiddenContext || exhibit.internalContext || exhibit.hiddenDescription || "",
+  };
+  return simpleHash(JSON.stringify(payload));
+}
+
 function stripHtml(html) {
   return String(html || "")
     .replace(/<[^>]*>/g, " ")
@@ -633,7 +660,8 @@ exports.handler = async (event) => {
     const factKey = factKeyFromCommand || factKeyFromTag || "";
 
     const cacheQuestionKey = factKey ? `__FACT:${factKey}__` : qNorm;
-    const cacheKey = `${museumSlug}||${exhibitionSlug}||${exhibitId}||${cacheQuestionKey}`;
+    const exhibitCacheVersion = buildExhibitCacheVersion(exhibit);
+    const cacheKey = `${museumSlug}||${exhibitionSlug}||${exhibitId}||${exhibitCacheVersion}||${cacheQuestionKey}`;
 
     const cached = cacheGet(cacheKey);
     if (cached) {
