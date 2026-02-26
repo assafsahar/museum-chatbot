@@ -11,7 +11,8 @@
   --shadow: 0 10px 30px rgba(15,23,42,.08);
   --radius:16px;
   --max: 1100px;
-  --font: system-ui, -apple-system, "Segoe UI", Arial;
+  --font: "Rubik", "Noto Sans Hebrew", "Segoe UI", Arial, sans-serif;
+  --font-ui-strong: "Rubik", "Noto Sans Hebrew", "Segoe UI", Arial, sans-serif;
 }
 
 *{ box-sizing:border-box; }
@@ -23,6 +24,26 @@ body{
   background:var(--bg);
   color:var(--text);
   direction: rtl;
+}
+
+/* Keep all UI text on the same sans stack */
+body, div, span, p, a, b, strong, h1, h2, h3, h4, h5, h6, li, label{
+  font-family: var(--font);
+}
+
+button, input, textarea, select{
+  font-family: var(--font);
+}
+
+/* Force the same sans stack on key UI text to avoid browser fallback differences by weight */
+.brand .museum-name,
+.usage-pill__label,
+.usage-pill__value,
+.h1,
+.section-title,
+.exhibitLink,
+.exhibitLink b{
+  font-family: var(--font-ui-strong);
 }
 
 a{ color:inherit; }
@@ -60,7 +81,7 @@ a{ color:inherit; }
 }
 
 .brand .museum-name{
-  font-weight:900;
+  font-weight:800;
 }
 
 .small{
@@ -113,6 +134,7 @@ a{ color:inherit; }
 
 .h1{
   font-size:28px;
+  font-weight:800;
   margin:0 0 6px;
 }
 
@@ -123,7 +145,7 @@ a{ color:inherit; }
 }
 
 .section-title{
-  font-weight:900;
+  font-weight:800;
   margin: 18px 0 10px;
 }
 
@@ -197,7 +219,7 @@ a{ color:inherit; }
   display:flex;
   align-items:center;
   gap:8px;
-  font-weight:900;
+  font-weight:800;
   font-size:18px;
 }
 

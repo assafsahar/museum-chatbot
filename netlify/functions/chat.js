@@ -251,6 +251,8 @@ function mapPlainButtonToCommand(qNorm) {
   if (qNorm === "חומרים") return "__FACT:חומרים__";
   if (qNorm === "שנת יצירה") return "__FACT:שנת יצירה__";
   if (qNorm === "אוצר/ת") return "__FACT:אוצר/ת__";
+  if (qNorm === "מי האוצר/ת") return "__FACT:אוצר/ת__";
+  if (qNorm === "מי האוצרת/האוצר") return "__FACT:אוצר/ת__";
   return qNorm;
 }
 

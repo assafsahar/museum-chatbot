@@ -57,9 +57,20 @@
 
   const exhibitionImg = document.getElementById("exhibitionImg");
   const exhibitionTitle = document.getElementById("exhibitionTitle");
+  const exhibitionCurator = document.getElementById("exhibitionCurator");
   const exhibitionSummary = document.getElementById("exhibitionSummary");
 
   if (exhibitionTitle) exhibitionTitle.textContent = data.museum?.exhibitionTitle || "";
+  const curatorName =
+    (data.museum?.exhibitionCurator || data.museum?.curatorName || data.museum?.curator || "").trim();
+  if (exhibitionCurator) {
+    if (curatorName) {
+      exhibitionCurator.textContent = `אוצר/ת: ${curatorName}`;
+      exhibitionCurator.style.display = "block";
+    } else {
+      exhibitionCurator.style.display = "none";
+    }
+  }
   if (exhibitionSummary) exhibitionSummary.textContent = data.museum?.exhibitionSummary || "";
 
   const imgSrc = (data.museum?.exhibitionImage || "").trim();
