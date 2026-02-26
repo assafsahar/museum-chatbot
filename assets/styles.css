@@ -106,14 +106,16 @@ a{ color:inherit; }
 .hero{
   position:relative;
   aspect-ratio: 16/9;
-  background:#dde2ee;
+  background:#ffffff;
 }
 
 .hero img{
   width:100%;
   height:100%;
-  object-fit:cover;
+  object-fit:contain;
+  object-position:center;
   display:block;
+  background:#ffffff;
 }
 
 .hero.hero--exhibition{
@@ -125,7 +127,8 @@ a{ color:inherit; }
 .hero.hero--exhibition img{
   width:100%;
   height:100%;
-  object-fit:cover;
+  object-fit:contain;
+  object-position:center;
 }
 
 .content{
