@@ -31,11 +31,15 @@ export function renderCreator(els, exhibit) {
   els.creatorBox.style.display = "flex";
   els.creatorText.textContent = exhibit.creatorName || "—";
 
-  const fallbackImg = "assets/creator-placeholder.jpg";
   const creatorImg = String(exhibit.creatorImage || "").trim();
-
-  els.creatorImg.src = creatorImg || fallbackImg;
-  els.creatorImg.alt = exhibit.creatorName || "יוצר/ת";
+  if (creatorImg) {
+    els.creatorImg.src = creatorImg;
+    els.creatorImg.alt = exhibit.creatorName || "יוצר/ת";
+    els.creatorImg.style.display = "block";
+  } else {
+    els.creatorImg.removeAttribute("src");
+    els.creatorImg.style.display = "none";
+  }
 }
 
 export function renderDescription(els, exhibit) {
