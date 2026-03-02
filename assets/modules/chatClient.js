@@ -63,6 +63,7 @@ export function createChatClient({
   exhibitionId = null,
   debugMode = false,
   mockMode = false,
+  onAnalyticsEvent = null,
 
   // Optional: use this to call production Functions while running locally
   // Example: "https://museum-chatbot1.netlify.app"
@@ -104,10 +105,16 @@ export function createChatClient({
     stopBtn.textContent = "עצור";
 
     playBtn.addEventListener("click", () => {
+      if (typeof onAnalyticsEvent === "function") {
+        onAnalyticsEvent("audio_play_click", { source: "tts_button" });
+      }
       speakText(text);
     });
 
     stopBtn.addEventListener("click", () => {
+      if (typeof onAnalyticsEvent === "function") {
+        onAnalyticsEvent("audio_pause_click", { source: "tts_button" });
+      }
       stopSpeaking();
     });
 
@@ -234,9 +241,13 @@ export function createChatClient({
 
     els.q.value = "";
     appendMessage("user", q);
+    if (typeof onAnalyticsEvent === "function") {
+      onAnalyticsEvent("chat_send_click", { questionLength: q.length });
+      onAnalyticsEvent("free_question_submit", { questionLength: q.length });
+    }
 
     const pending = appendMessage("assistant", "רגע…");
-    const { answer, quotaWarning } = await ask(q);
+    const { answer, quotaWarning, debug } = await ask(q);
 
     const bubble = pending.querySelector(".bubble");
     if (bubble) bubble.textContent = answer;
@@ -256,6 +267,13 @@ export function createChatClient({
       }
       const suffix = extra.length ? ` (${extra.join(" · ")})` : "";
       appendMessage("assistant", `${quotaWarning.message}${suffix}`);
+    }
+
+    if (typeof onAnalyticsEvent === "function") {
+      onAnalyticsEvent("chat_answer_received", {
+        answerMode: debug?.mode || null,
+        quotaWarning: !!quotaWarning?.message,
+      });
     }
 
     scrollToBottom();

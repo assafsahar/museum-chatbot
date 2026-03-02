@@ -230,6 +230,19 @@ function buildQuotaBlockedPayload(quotaStatus) {
 function getFactAnswer(exhibit, factKey) {
   const facts = Array.isArray(exhibit?.facts) ? exhibit.facts : [];
   const key = String(factKey || "").trim();
+  const normalizedKey = normalizeQuestion(key);
+
+  // Creator button: prefer creatorBio over short fact labels.
+  const creatorFactAliases = new Set([
+    "אודות היוצר/ת",
+    "היוצר/ת",
+    "מי היוצר/ת",
+  ]);
+  if (creatorFactAliases.has(normalizedKey)) {
+    const creatorName = String(exhibit?.creatorName || "").trim();
+    const creatorBio = String(exhibit?.creatorBio || "").trim();
+    return buildCreatorAnswer(creatorName, creatorBio);
+  }
 
   const found = facts.find((f) => String(f).trim().startsWith(`${key}:`));
   if (!found) return "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
@@ -277,6 +290,7 @@ function mapPlainButtonToCommand(qNorm) {
   if (qNorm === "טכניקות") return "__FACT:טכניקות__";
   if (qNorm === "חומרים") return "__FACT:חומרים__";
   if (qNorm === "שנת יצירה") return "__FACT:שנת יצירה__";
+  if (qNorm === "אודות היוצר/ת") return "__FACT:אודות היוצר/ת__";
   if (qNorm === "אוצר/ת") return "__FACT:אוצר/ת__";
   if (qNorm === "מי האוצר/ת") return "__FACT:אוצר/ת__";
   if (qNorm === "מי האוצרת/האוצר") return "__FACT:אוצר/ת__";

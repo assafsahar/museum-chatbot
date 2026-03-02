@@ -12,6 +12,7 @@ import {
 } from "./modules/render.js";
 import { createChatClient } from "./modules/chatClient.js";
 import { setupVoiceInput } from "./modules/voice.js";
+import { createAnalyticsTracker } from "./modules/analyticsClient.js";
 
 // ------------------------------
 // Local Conversation Tracking (Client-Side)
@@ -164,6 +165,80 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
   }
 }
 
+let ytApiPromise = null;
+
+function loadYouTubeIframeApi() {
+  if (typeof window === "undefined") return Promise.resolve(null);
+  if (window.YT && window.YT.Player) return Promise.resolve(window.YT);
+  if (ytApiPromise) return ytApiPromise;
+
+  ytApiPromise = new Promise((resolve) => {
+    const prev = window.onYouTubeIframeAPIReady;
+    window.onYouTubeIframeAPIReady = () => {
+      if (typeof prev === "function") {
+        try {
+          prev();
+        } catch {}
+      }
+      resolve(window.YT || null);
+    };
+
+    const existing = document.querySelector('script[src="https://www.youtube.com/iframe_api"]');
+    if (existing) return;
+
+    const s = document.createElement("script");
+    s.src = "https://www.youtube.com/iframe_api";
+    s.async = true;
+    document.head.appendChild(s);
+  });
+
+  return ytApiPromise;
+}
+
+function isYouTubeUrl(url) {
+  const s = String(url || "").toLowerCase();
+  return s.includes("youtube.com/embed/") || s.includes("youtu.be/");
+}
+
+function ensureYouTubeApiParams(url) {
+  try {
+    const u = new URL(String(url || ""), window.location.origin);
+    u.searchParams.set("enablejsapi", "1");
+    u.searchParams.set("origin", window.location.origin);
+    return u.toString();
+  } catch {
+    return String(url || "");
+  }
+}
+
+async function wireYouTubePlayTracking({ iframeEl, url, onFirstPlay }) {
+  if (!iframeEl || !isYouTubeUrl(url)) return;
+
+  const apiUrl = ensureYouTubeApiParams(url);
+  if (iframeEl.src !== apiUrl) iframeEl.src = apiUrl;
+
+  const YT = await loadYouTubeIframeApi().catch(() => null);
+  if (!YT || !YT.Player) return;
+
+  if (!iframeEl.id) {
+    iframeEl.id = `yt-frame-${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  }
+
+  let fired = false;
+  // eslint-disable-next-line no-new
+  new YT.Player(iframeEl.id, {
+    events: {
+      onStateChange: (ev) => {
+        if (fired) return;
+        if (ev?.data === YT.PlayerState.PLAYING) {
+          fired = true;
+          onFirstPlay();
+        }
+      },
+    },
+  });
+}
+
 (async function () {
   const params = new URLSearchParams(location.search);
 
@@ -178,6 +253,12 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
   const mockMode = params.get("mock") === "1";
 
   const els = getEls();
+  const analytics = createAnalyticsTracker({
+    museumId,
+    exhibitionId,
+    exhibitId,
+    page: "exhibit",
+  });
 
   const chat = createChatClient({
     els,
@@ -186,6 +267,11 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
     exhibitionId,
     debugMode,
     mockMode,
+    onAnalyticsEvent: (eventName, meta = {}) => analytics.track(eventName, meta),
+  });
+  analytics.track("app_open", {
+    debugMode: !!debugMode,
+    mockMode: !!mockMode,
   });
 
   // Start local conversation tracking (so museum page can show chats)
@@ -217,6 +303,7 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
 
   // Wrap reset so we also start a fresh tracking session
   els.resetBtn?.addEventListener("click", async () => {
+    analytics.track("chat_reset_click", {});
     await chat.onReset();
     tracker.resetSession();
     scheduleSync();
@@ -248,6 +335,7 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
     data = await res.json();
   } catch (e) {
     console.log("content load failed:", e);
+    analytics.track("ui_error", { kind: "content_load_failed" });
     chat.appendMessage("assistant", "לא הצלחתי לטעון את תוכן התערוכה.");
     return;
   }
@@ -256,11 +344,13 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
 
   const exhibit = data?.exhibits?.[exhibitId];
   if (!exhibit) {
+    analytics.track("ui_error", { kind: "exhibit_not_found" });
     chat.appendMessage("assistant", "לא מצאתי את המיצג הזה.");
     return;
   }
 
   els.title.textContent = exhibit.title || "";
+  analytics.track("exhibit_view", { hasVideo: !!String(exhibit.videoUrl || "").trim() });
   els.subtitle.textContent = exhibit.subtitle || "";
 
   tracker.setExhibitTitle(exhibit.title || exhibitId);
@@ -269,17 +359,36 @@ async function loadMonthlyUsage({ museumId, exhibitionId }) {
   renderCreator(els, exhibit);
 
   setTags(els, exhibit, async (tagText) => {
+    analytics.track("quick_question_click", { buttonLabel: String(tagText || "").trim() });
     chat.appendMessage("user", tagText);
     const pending = chat.appendMessage("assistant", "רגע…");
 
-    const { answer } = await chat.ask(tagText);
+    const { answer, debug, quotaWarning } = await chat.ask(tagText);
 
     pending.querySelector(".bubble").textContent = answer;
+    analytics.track("chat_answer_received", {
+      answerMode: debug?.mode || null,
+      quotaWarning: !!quotaWarning?.message,
+      source: "quick_question",
+    });
     chat.scrollToBottom();
   });
 
   renderDescription(els, exhibit);
   renderVideo(els, exhibit);
+  let videoPlayTracked = false;
+  const trackVideoPlay = (source) => {
+    if (videoPlayTracked) return;
+    videoPlayTracked = true;
+    analytics.track("video_play_click", { source: source || "unknown" });
+  };
+  await wireYouTubePlayTracking({
+    iframeEl: els.videoFrame,
+    url: exhibit.videoUrl,
+    onFirstPlay: () => {
+      trackVideoPlay("youtube_playing");
+    },
+  });
 
   // Load monthly usage counter (if the element exists on this page)
   await loadMonthlyUsage({ museumId, exhibitionId });

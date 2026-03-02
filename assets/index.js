@@ -249,5 +249,125 @@
     }
   }
 
+function renderAnalyticsInsights(container, report, map) {
+    if (!container) return;
+    if (!report || !report.ok) {
+      container.innerHTML = `<div class="small">לא ניתן לטעון תובנות כרגע.</div>`;
+      return;
+    }
+
+    const totals = report.totals || {};
+    const conversion = report.conversion || {};
+    const topExhibits = Array.isArray(report.topExhibits) ? report.topExhibits : [];
+
+    const viewSessions = Number(totals.exhibitViewSessions || 0);
+    const chatPerSession =
+      viewSessions > 0 ? Number((Number(totals.chatAnswers || 0) / viewSessions).toFixed(2)) : 0;
+    const quickPerSession =
+      viewSessions > 0
+        ? Number((Number(totals.quickQuestionClicks || 0) / viewSessions).toFixed(2))
+        : 0;
+    const freePerSession =
+      viewSessions > 0
+        ? Number((Number(totals.freeQuestionSubmits || 0) / viewSessions).toFixed(2))
+        : 0;
+
+    const kpis = [
+      {
+        label: "צפיות במיצגים",
+        value: Number(totals.exhibitViewEvents || 0),
+        sub: `sessions: ${Number(totals.exhibitViewSessions || 0)}`,
+      },
+      {
+        label: "תשובות צ'אט",
+        value: Number(totals.chatAnswers || 0),
+        sub: `ממוצע לסשן: ${chatPerSession}`,
+      },
+      {
+        label: "לחיצות כפתורים",
+        value: Number(totals.quickQuestionClicks || 0),
+        sub: `ממוצע לסשן: ${quickPerSession}`,
+      },
+      {
+        label: "שאלות פתוחות",
+        value: Number(totals.freeQuestionSubmits || 0),
+        sub: `ממוצע לסשן: ${freePerSession}`,
+      },
+      {
+        label: "ניגוני וידאו",
+        value: Number(totals.videoPlayClicks || 0),
+        sub: `אודיו: ${Number(totals.audioPlayClicks || 0)}`,
+      },
+    ];
+
+    const topRows = topExhibits
+      .map((row) => {
+        const exhibitId = String(row.exhibitId || "");
+        const title = map?.[exhibitId]?.title || exhibitId || "לא ידוע";
+        const views = Number(row.exhibitViews || 0);
+        return `
+          <div class="insight-table__row">
+            <div class="insight-table__left">${title}</div>
+            <div class="insight-table__right">${views}</div>
+          </div>
+        `;
+      })
+      .join("");
+
+    const from = report?.range?.from || "";
+    const to = report?.range?.to || "";
+
+    container.innerHTML = `
+      <div class="small">טווח נתונים: ${from} עד ${to}</div>
+      <div class="insights-grid">
+        ${kpis
+          .map(
+            (k) => `
+          <div class="insight-kpi">
+            <div class="insight-kpi__label">${k.label}</div>
+            <div class="insight-kpi__value">${k.value}</div>
+            <div class="insight-kpi__sub">${k.sub}</div>
+          </div>
+        `
+          )
+          .join("")}
+      </div>
+      <div class="insights-section-title">Top מיצגים לפי צפיות</div>
+      <div class="insight-table">
+        ${topRows || `<div class="small">אין נתוני צפיות בטווח שנבחר.</div>`}
+      </div>
+    `;
+  }
+
+  async function loadAnalyticsInsights(map, rangeDays = 30) {
+    const insightsEl = document.getElementById("analyticsInsights");
+    if (!insightsEl) return;
+
+    try {
+      const qs = buildQuery({ rangeDays });
+      const url = qs
+        ? `/.netlify/functions/analytics-report?${qs}`
+        : `/.netlify/functions/analytics-report?rangeDays=${encodeURIComponent(rangeDays)}`;
+
+      const res = await fetch(url, { cache: "no-store" });
+      if (!res.ok) throw new Error(`analytics report http ${res.status}`);
+
+      const json = await res.json();
+      renderAnalyticsInsights(insightsEl, json, map);
+    } catch (e) {
+      console.log("analytics insights error:", e);
+      insightsEl.innerHTML = `<div class="small">לא ניתן לטעון תובנות כרגע.</div>`;
+    }
+  }
+
   await loadUsageBreakdown(exhibitsMap);
+
+  const rangeEl = document.getElementById("analyticsRangeDays");
+  const initialRange = Number(rangeEl?.value || 30);
+  await loadAnalyticsInsights(exhibitsMap, initialRange);
+
+  rangeEl?.addEventListener("change", async () => {
+    const nextRange = Number(rangeEl.value || 30);
+    await loadAnalyticsInsights(exhibitsMap, nextRange);
+  });
 })();
