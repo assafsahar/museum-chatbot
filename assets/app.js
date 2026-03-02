@@ -395,6 +395,6 @@ async function wireYouTubePlayTracking({ iframeEl, url, onFirstPlay }) {
 
   chat.appendMessage(
     "assistant",
-    "שלום :) אפשר לשאול אותי שאלות על המיצג, או להשתמש בכפתורים למעלה לקבלת מידע מהיר."
+    "שלום :) אפשר לשאול אותי שאלות על המיצג, או להשתמש בכפתורים למעלה לקבלת מידע מהיר. המדריך מופעל על ידי Game Factory."
   );
 })();
