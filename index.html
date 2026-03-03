@@ -5,6 +5,38 @@
   <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>מדריך אינטראקטיבי – מוזיאון</title>
   <link rel="stylesheet" href="assets/styles.css"/>
+  <!-- Google tag (gtag.js) -->
+  <script>
+    (function () {
+      // Set staging ID when available. If empty, staging falls back to production ID.
+      const GA_IDS = {
+        production: "G-Q6TTZPPY3H",
+        staging: "G-CQCBKNQL4M",
+      };
+
+      const host = String(window.location.hostname || "").toLowerCase();
+      const isProduction = host === "museum-chatbot1.netlify.app";
+      const isStaging = host.startsWith("staging--") || host.includes("--museum-chatbot1.netlify.app");
+
+      let measurementId = "";
+      if (isProduction) measurementId = GA_IDS.production;
+      else if (isStaging) measurementId = GA_IDS.staging || GA_IDS.production;
+      else measurementId = GA_IDS.production;
+
+      if (!measurementId) return;
+
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){window.dataLayer.push(arguments);}
+      window.gtag = gtag;
+      gtag("js", new Date());
+      gtag("config", measurementId);
+
+      const s = document.createElement("script");
+      s.async = true;
+      s.src = "https://www.googletagmanager.com/gtag/js?id=" + encodeURIComponent(measurementId);
+      document.head.appendChild(s);
+    })();
+  </script>
 </head>
 
 <body>

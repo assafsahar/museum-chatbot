@@ -13,6 +13,7 @@ import {
 import { createChatClient } from "./modules/chatClient.js";
 import { setupVoiceInput } from "./modules/voice.js";
 import { createAnalyticsTracker } from "./modules/analyticsClient.js";
+import { initGaReliability, trackGaError } from "./modules/gaTelemetry.js";
 
 // ------------------------------
 // Local Conversation Tracking (Client-Side)
@@ -251,6 +252,8 @@ async function wireYouTubePlayTracking({ iframeEl, url, onFirstPlay }) {
 
   const debugMode = params.get("debug") === "1";
   const mockMode = params.get("mock") === "1";
+  const gaCtx = { page: "exhibit", museumId, exhibitionId, exhibitId };
+  initGaReliability(gaCtx);
 
   const els = getEls();
   const analytics = createAnalyticsTracker({
@@ -335,6 +338,7 @@ async function wireYouTubePlayTracking({ iframeEl, url, onFirstPlay }) {
     data = await res.json();
   } catch (e) {
     console.log("content load failed:", e);
+    trackGaError(gaCtx, "content_load_failed", { status: String(e?.message || "") });
     analytics.track("ui_error", { kind: "content_load_failed" });
     chat.appendMessage("assistant", "לא הצלחתי לטעון את תוכן התערוכה.");
     return;
@@ -344,6 +348,7 @@ async function wireYouTubePlayTracking({ iframeEl, url, onFirstPlay }) {
 
   const exhibit = data?.exhibits?.[exhibitId];
   if (!exhibit) {
+    trackGaError(gaCtx, "exhibit_not_found", { exhibit_id: exhibitId });
     analytics.track("ui_error", { kind: "exhibit_not_found" });
     chat.appendMessage("assistant", "לא מצאתי את המיצג הזה.");
     return;

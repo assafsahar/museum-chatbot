@@ -1,12 +1,16 @@
 // assets/index.js
 // Comments in English only
 
+import { initGaReliability, trackGaError } from "./modules/gaTelemetry.js";
+
 (async () => {
   const params = new URLSearchParams(location.search);
 
   // Tenant params
   const museumId = params.get("museum") || params.get("museumId") || null;
   const exhibitionId = params.get("exhibition") || params.get("exhibitionId") || null;
+  const gaCtx = { page: "dashboard", museumId, exhibitionId };
+  initGaReliability(gaCtx);
 
   function buildQuery(extra) {
     const q = new URLSearchParams();
@@ -52,6 +56,7 @@
     data = await res.json();
   } catch (e) {
     console.log("content load failed:", e);
+    trackGaError(gaCtx, "content_load_failed", { status: String(e?.message || "") });
     return;
   }
 
@@ -192,6 +197,7 @@
     if (usageMonthEl) usageMonthEl.textContent = String(usageJson?.monthKey ?? "—");
     renderQuotaHint(usageJson?.quota || null);
   } catch {
+    trackGaError(gaCtx, "usage_load_failed", {});
     if (usageCountEl) usageCountEl.textContent = "—";
     if (usageMonthEl) usageMonthEl.textContent = "—";
     renderQuotaHint(null);
@@ -244,6 +250,7 @@
       renderUsageBreakdown(breakdownEl, items, map);
     } catch (e) {
       console.log("usage breakdown error:", e);
+      trackGaError(gaCtx, "usage_breakdown_failed", { status: String(e?.message || "") });
       const breakdownEl = document.getElementById("usageBreakdown");
       if (breakdownEl) breakdownEl.innerHTML = `<div class="small">לא ניתן לטעון את ההתפלגות כרגע.</div>`;
     }
@@ -356,6 +363,7 @@ function renderAnalyticsInsights(container, report, map) {
       renderAnalyticsInsights(insightsEl, json, map);
     } catch (e) {
       console.log("analytics insights error:", e);
+      trackGaError(gaCtx, "analytics_report_failed", { status: String(e?.message || "") });
       insightsEl.innerHTML = `<div class="small">לא ניתן לטעון תובנות כרגע.</div>`;
     }
   }

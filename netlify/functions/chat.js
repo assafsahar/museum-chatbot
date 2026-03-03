@@ -281,6 +281,39 @@ function buildCreatorAnswer(creatorName, creatorBio) {
   return limitChars(creatorBio, 1200);
 }
 
+function getExhibitionCurator(museum) {
+  return String(museum?.exhibitionCurator || museum?.curatorName || museum?.curator || "").trim();
+}
+
+function isExhibitionCuratorQuestion(q) {
+  const s = normalizeQuestion(q);
+  if (!s) return false;
+
+  const asksCurator = /(אוצר|אוצרת|אוצר\/ת)/i.test(s);
+  const asksExhibition = /(תערוכ|התערוכ)/i.test(s);
+  if (asksCurator && asksExhibition) return true;
+
+  return /^מי\s+האוצר/i.test(s) || /^מי\s+האוצרת/i.test(s);
+}
+
+function isExhibitionSummaryQuestion(q) {
+  const s = normalizeQuestion(q);
+  if (!s) return false;
+  return /(תערוכ|התערוכ)/i.test(s);
+}
+
+function buildExhibitionCuratorAnswer(curatorName) {
+  const n = String(curatorName || "").trim();
+  if (!n) return "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+  return `אוצר/ת התערוכה: ${n}`;
+}
+
+function buildExhibitionSummaryAnswer(exhibitionSummary) {
+  const summary = limitChars(stripHtml(exhibitionSummary || ""), 1200);
+  if (!summary) return "אין לי מספיק מידע על זה מתוך המידע שיש לי על המיצג.";
+  return summary;
+}
+
 function mapPlainButtonToCommand(qNorm) {
   if (qNorm === "תקציר קצר") return "__SUMMARY__";
   if (qNorm === "טכניקות") return "__FACT:טכניקות__";
@@ -533,7 +566,7 @@ async function resolveMuseumAndExhibition({ museumId, exhibitionId }) {
   };
 }
 
-function buildDemoAnswer({ exhibit, qNorm, qNormRaw }) {
+function buildDemoAnswer({ exhibit, museum, qNorm, qNormRaw }) {
   // Comments in English only
 
   if (qNorm === "__SUMMARY__") {
@@ -550,6 +583,14 @@ function buildDemoAnswer({ exhibit, qNorm, qNormRaw }) {
     const creatorName = String(exhibit.creatorName || "").trim();
     const creatorBio = String(exhibit.creatorBio || "").trim();
     return buildCreatorAnswer(creatorName, creatorBio);
+  }
+
+  if (isExhibitionCuratorQuestion(qNormRaw)) {
+    return buildExhibitionCuratorAnswer(getExhibitionCurator(museum));
+  }
+
+  if (isExhibitionSummaryQuestion(qNormRaw)) {
+    return buildExhibitionSummaryAnswer(museum?.exhibitionSummary || "");
   }
 
   return "במצב הדגמה מקומי אני עונה רק מתוך הכפתורים והעובדות שהוזנו. אפשר ללחוץ על אחת האפשרויות למעלה.";
@@ -668,8 +709,17 @@ exports.handler = async (event) => {
     const factKeyFromCommand = getFactKeyFromCommand(qNorm);
     const factKeyFromTag = resolveFactKeyByTag(exhibit, qNormRaw);
     const factKey = factKeyFromCommand || factKeyFromTag || "";
+    const exhibitionCurator = getExhibitionCurator(exhibitsData?.museum);
+    const exhibitionSummaryRaw = String(exhibitsData?.museum?.exhibitionSummary || "");
+    const isExhibitionCuratorQ = isExhibitionCuratorQuestion(qNormRaw);
+    const isExhibitionSummaryQ = !isExhibitionCuratorQ && isExhibitionSummaryQuestion(qNormRaw);
+    const exhibitionKey = isExhibitionCuratorQ
+      ? "__EXHIBITION_CURATOR__"
+      : isExhibitionSummaryQ
+      ? "__EXHIBITION_SUMMARY__"
+      : "";
 
-    const cacheQuestionKey = factKey ? `__FACT:${factKey}__` : qNorm;
+    const cacheQuestionKey = factKey ? `__FACT:${factKey}__` : exhibitionKey || qNorm;
     const exhibitCacheVersion = buildExhibitCacheVersion(exhibit);
     const cacheKey = `${museumSlug}||${exhibitionSlug}||${exhibitId}||${exhibitCacheVersion}||${cacheQuestionKey}`;
 
@@ -757,7 +807,7 @@ exports.handler = async (event) => {
 
     // Fast path: summary button should also bypass OpenAI.
     if (qNorm === "__SUMMARY__") {
-      const answer = buildDemoAnswer({ exhibit, qNorm, qNormRaw });
+      const answer = buildDemoAnswer({ exhibit, museum: exhibitsData?.museum, qNorm, qNormRaw });
       cacheSet(cacheKey, answer, "fact");
 
       safeTrack({
@@ -797,11 +847,56 @@ exports.handler = async (event) => {
       });
     }
 
+    // Fast path: open questions about exhibition/curator are answered from exhibition fields.
+    if (isExhibitionCuratorQ || isExhibitionSummaryQ) {
+      const answer = isExhibitionCuratorQ
+        ? buildExhibitionCuratorAnswer(exhibitionCurator)
+        : buildExhibitionSummaryAnswer(exhibitionSummaryRaw);
+
+      cacheSet(cacheKey, answer, "fact");
+
+      safeTrack({
+        museumId: museumDbId,
+        monthKey,
+        exhibitId,
+        exhibitionId: exhibitionDbId,
+        mode: "fast",
+        cached: false,
+        inputTokens: 0,
+        outputTokens: 0,
+        totalTokens: 0,
+        openaiCostUsd: 0,
+      });
+
+      return jsonResponse(event, 200, {
+        answer,
+        fast: true,
+        ...buildQuotaWarningPayload(quotaStatus),
+        ...(debugMode
+          ? {
+              debug: {
+                mode: isExhibitionCuratorQ ? "fast_exhibition_curator" : "fast_exhibition_summary",
+                museumDbId,
+                museumSlug,
+                exhibitionDbId,
+                exhibitionSlug,
+                exhibitId,
+                monthKey,
+                baseUrl,
+                contentPath: buildContentPath({ museumId: museumSlug, exhibitionId: exhibitionSlug }),
+                quotaStatus,
+                lastTrackStatus,
+              },
+            }
+          : {}),
+      });
+    }
+
     const apiKey = process.env.OPENAI_API_KEY;
 
     // Demo mode: if no key, answer safely without OpenAI
     if (!apiKey) {
-      const answer = buildDemoAnswer({ exhibit, qNorm, qNormRaw });
+      const answer = buildDemoAnswer({ exhibit, museum: exhibitsData?.museum, qNorm, qNormRaw });
 
       cacheSet(cacheKey, answer, "ai");
 
@@ -849,6 +944,7 @@ exports.handler = async (event) => {
 
     const context = {
       exhibitionSummary,
+      exhibitionCurator: getExhibitionCurator(exhibitsData?.museum),
       creatorName: exhibit.creatorName || "",
       creatorBio: limitChars(exhibit.creatorBio || "", 220),
       title: exhibit.title,
@@ -873,6 +969,8 @@ exports.handler = async (event) => {
 - לא להמציא עובדות, שמות, תאריכים, או פרטים שלא מופיעים ב-Context.
 - לא להוסיף קישורים ולא להפנות לאינטרנט.
 - תשובה קצרה (עד ~120 מילים), אלא אם המשתמש ביקש במפורש פירוט.
+- אם השאלה היא על התערוכה (ולא על המיצג), יש לענות מתוך exhibitionSummary.
+- אם השאלה היא "מי האוצר/ת", יש לענות מתוך exhibitionCurator בלבד.
 `;
 
     const userPrompt = `
@@ -902,7 +1000,7 @@ ${qNormRaw}
 
     const openaiJson = await openaiRes.json();
     if (!openaiRes.ok) {
-      const fallbackAnswer = buildDemoAnswer({ exhibit, qNorm, qNormRaw });
+      const fallbackAnswer = buildDemoAnswer({ exhibit, museum: exhibitsData?.museum, qNorm, qNormRaw });
       cacheSet(cacheKey, fallbackAnswer, "ai");
 
       safeTrack({
