@@ -278,11 +278,7 @@ function buildCreatorAnswer(creatorName, creatorBio) {
     return `היוצר/ת של המיצג הוא/היא ${name}. אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי.`;
   }
 
-  const bio = limitChars(creatorBio, 450);
-  const suffix = "מעבר לזה אין לי מידע ביוגרפי נוסף מתוך המידע שיש לי.";
-  const sep = /[.!?״”"]\s*$/.test(bio) ? " " : ". ";
-
-  return `${bio}${sep}${suffix}`;
+  return limitChars(creatorBio, 1200);
 }
 
 function mapPlainButtonToCommand(qNorm) {
