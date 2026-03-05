@@ -13,6 +13,8 @@
   --max: 1100px;
   --font: "Rubik", "Noto Sans Hebrew", "Segoe UI", Arial, sans-serif;
   --font-ui-strong: "Rubik", "Noto Sans Hebrew", "Segoe UI", Arial, sans-serif;
+  /* NEW: Added serif font for artwork title hierarchy */
+  --font-serif: "Frank Ruhl Libre", serif;
 }
 
 *{ box-sizing:border-box; }
@@ -156,16 +158,25 @@ a{ color:inherit; }
   padding:18px;
 }
 
+/* * UI UPDATE: Artwork Title & Creator Hierarchy (image_10.png)
+ * Restyled .h1 to be prominent and serif, and .h2 (artist) to be muted but distinct.
+ */
 .h1{
-  font-size:28px;
-  font-weight:800;
-  margin:0 0 6px;
+  font-family: var(--font-serif);
+  font-size:32px;
+  font-weight:900;
+  margin:0 0 4px;
+  color: var(--text);
+  line-height: 1.2;
 }
 
 .h2{
   font-size:16px;
+  font-weight:500;
   color:var(--muted);
-  margin:0 0 14px;
+  margin:0 0 20px;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 10px;
 }
 
 .section-title{
