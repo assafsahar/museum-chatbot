@@ -6,8 +6,8 @@
   --card:#ffffff;
   --text:#0f172a;
   --muted:#64748b;
-  --border:#e5e7eb;
-  --brand:#0b1220;
+  --brand: #721c24; /* צבע יין/בורדו עמוק */
+  --border: #d1d5db; /* קו קצת יותר כהה כדי שיראו אותו טוב */
   --shadow: 0 10px 30px rgba(15,23,42,.08);
   --radius:16px;
   --max: 1100px;
@@ -139,6 +139,8 @@ a{ color:inherit; }
   object-position:center;
   display:block;
   background:#ffffff;
+  border: 1px solid var(--border); /* מסגרת עדינה סביב היצירה */
+  border-radius: 4px; /* עיגול פינות קל מאוד למראה מודרני */
 }
 
 .hero.hero--exhibition{
@@ -163,20 +165,22 @@ a{ color:inherit; }
  */
 .h1{
   font-family: var(--font-serif);
-  font-size:32px;
-  font-weight:900;
-  margin:0 0 4px;
-  color: var(--text);
+  font-size: 38px; /* הגדלה משמעותית */
+  font-weight: 900;
+  color: var(--brand); /* צבע בורדו לכותרת */
+  margin: 0 0 8px;
+  letter-spacing: -1px;
   line-height: 1.2;
 }
 
 .h2{
-  font-size:16px;
-  font-weight:500;
-  color:var(--muted);
-  margin:0 0 20px;
-  border-bottom: 1px solid var(--border);
-  padding-bottom: 10px;
+  font-size: 18px;
+  font-weight: 400;
+  color: var(--muted);
+  margin: 0 0 24px;
+  border-bottom: 2px solid var(--brand); /* קו עבה יותר ובצבע המותג */
+  padding-bottom: 12px;
+  display: block; /* וודא שהקו נמתח לכל הרוחב */
 }
 
 .section-title{
