@@ -135,6 +135,72 @@ function getContentUrl({ museumId, exhibitionId }) {
   return "assets/exhibits.json";
 }
 
+// ------------------------------
+// Tenant Configuration
+// ------------------------------
+
+async function loadTenantConfig() {
+  try {
+    const res = await fetch("assets/config/tenants.json", { cache: "no-store" });
+    if (!res.ok) throw new Error(`tenant config http ${res.status}`);
+    return await res.json();
+  } catch (e) {
+    console.log("tenant config load failed:", e);
+    return {
+      defaultTenant: "museum",
+      tenants: {
+        museum: {
+          themeCss: "/assets/styles.css",
+          welcomeText: "",
+        },
+      },
+    };
+  }
+}
+
+function resolveTenantId(params, tenantConfig) {
+  const explicitTenant = (params.get("tenant") || params.get("vertical") || "").trim().toLowerCase();
+  if (explicitTenant && tenantConfig?.tenants?.[explicitTenant]) return explicitTenant;
+
+  const host = String(location.hostname || "").toLowerCase();
+  if (host.includes("winery")) return "winery";
+
+  return tenantConfig?.defaultTenant || "museum";
+}
+
+function applyTenantTheme(themeCss) {
+  const fallbackHref = "/assets/styles.css";
+  const href = String(themeCss || "").trim();
+  if (!href) return;
+
+  const existingThemeLink =
+    document.querySelector('link[data-role="tenant-theme"]') ||
+    document.querySelector('link[href$="assets/styles.css"]') ||
+    document.querySelector('link[href="/assets/styles.css"]');
+
+  if (existingThemeLink) {
+    existingThemeLink.onerror = () => {
+      if (existingThemeLink.getAttribute("href") !== fallbackHref) {
+        existingThemeLink.setAttribute("href", fallbackHref);
+      }
+    };
+    existingThemeLink.setAttribute("href", href);
+    existingThemeLink.setAttribute("data-role", "tenant-theme");
+    return;
+  }
+
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.onerror = () => {
+    if (link.getAttribute("href") !== fallbackHref) {
+      link.setAttribute("href", fallbackHref);
+    }
+  };
+  link.href = href;
+  link.setAttribute("data-role", "tenant-theme");
+  document.head.appendChild(link);
+}
+
 // Load monthly usage counter (optional UI)
 async function loadMonthlyUsage({ museumId, exhibitionId }) {
   const el = document.getElementById("usageMonthlyValue");
@@ -242,6 +308,13 @@ async function wireYouTubePlayTracking({ iframeEl, url, onFirstPlay }) {
 
 (async function () {
   const params = new URLSearchParams(location.search);
+  const tenantConfig = await loadTenantConfig();
+  const tenantId = resolveTenantId(params, tenantConfig);
+  const tenant =
+    tenantConfig?.tenants?.[tenantId] ||
+    tenantConfig?.tenants?.[tenantConfig?.defaultTenant] ||
+    {};
+  applyTenantTheme(tenant?.themeCss);
 
   // Exhibit id (existing behavior)
   const exhibitId = params.get("id") || "exhibit-01";
@@ -256,6 +329,17 @@ async function wireYouTubePlayTracking({ iframeEl, url, onFirstPlay }) {
   initGaReliability(gaCtx);
 
   const els = getEls();
+  const chatTitleEl = document.querySelector(".chat-header .title");
+  const creatorLabelEl = document.querySelector("#creatorLabel, #creatorBox > div > div:first-child");
+  const chatTitle = String(tenant?.chatTitle || "").trim();
+  const creatorLabel = String(tenant?.creatorLabel || "").trim();
+  if (chatTitleEl && chatTitle) {
+    chatTitleEl.textContent = chatTitle;
+  }
+  if (creatorLabelEl && creatorLabel) {
+    creatorLabelEl.textContent = creatorLabel;
+  }
+
   const analytics = createAnalyticsTracker({
     museumId,
     exhibitionId,
@@ -272,6 +356,22 @@ async function wireYouTubePlayTracking({ iframeEl, url, onFirstPlay }) {
     mockMode,
     onAnalyticsEvent: (eventName, meta = {}) => analytics.track(eventName, meta),
   });
+
+  const chatAppendMessage = chat.appendMessage.bind(chat);
+  chat.appendMessage = (role, text) => {
+    const tenantWelcome = String(tenant?.welcomeText || "").trim();
+    const shouldReplaceDefaultWelcome =
+      role === "assistant" &&
+      tenantWelcome.length > 0 &&
+      String(text || "").includes("Game Factory");
+
+    if (shouldReplaceDefaultWelcome) {
+      return chatAppendMessage(role, tenantWelcome);
+    }
+
+    return chatAppendMessage(role, text);
+  };
+
   analytics.track("app_open", {
     debugMode: !!debugMode,
     mockMode: !!mockMode,

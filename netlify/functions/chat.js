@@ -237,6 +237,12 @@ function getFactAnswer(exhibit, factKey) {
     "אודות היוצר/ת",
     "היוצר/ת",
     "מי היוצר/ת",
+    "\u05e2\u05dc \u05d4\u05d9\u05d9\u05e0\u05df/\u05d9\u05ea",
+    "\u05d4\u05d9\u05d9\u05e0\u05df/\u05d9\u05ea",
+    "\u05de\u05d9 \u05d4\u05d9\u05d9\u05e0\u05df/\u05d9\u05ea",
+    "\u05de\u05d9 \u05d4\u05d9\u05d9\u05e0\u05df",
+    "\u05de\u05d9 \u05d4\u05d9\u05d9\u05e0\u05e0\u05d9\u05ea",
+    "\u05d9\u05d9\u05e0\u05df/\u05d9\u05ea",
   ]);
   if (creatorFactAliases.has(normalizedKey)) {
     const creatorName = String(exhibit?.creatorName || "").trim();
@@ -257,6 +263,13 @@ function isCreatorQuestion(q) {
   if (!s) return false;
 
   const normalized = s.replace(/\u05F3/g, "'").replace(/\s+/g, " ");
+  const wineryCreatorHints = [
+    "\u05d4\u05d9\u05d9\u05e0\u05df",
+    "\u05d4\u05d9\u05d9\u05e0\u05e0\u05d9\u05ea",
+    "\u05d4\u05d9\u05d9\u05e0\u05df/\u05d9\u05ea",
+    "\u05e2\u05dc \u05d4\u05d9\u05d9\u05e0\u05df/\u05d9\u05ea",
+  ];
+  if (wineryCreatorHints.some((hint) => normalized.includes(hint))) return true;
 
   const patterns = [
     /מי\s+היוצר(?:\/ת)?/i,
@@ -579,7 +592,11 @@ function buildDemoAnswer({ exhibit, museum, qNorm, qNormRaw }) {
     return getFactAnswer(exhibit, factKey);
   }
 
-  if (isCreatorQuestion(qNormRaw) || qNormRaw === "מי היוצר/ת") {
+  if (
+    isCreatorQuestion(qNormRaw) ||
+    qNormRaw === "מי היוצר/ת" ||
+    normalizeQuestion(qNormRaw) === "\u05de\u05d9 \u05d4\u05d9\u05d9\u05e0\u05df/\u05d9\u05ea"
+  ) {
     const creatorName = String(exhibit.creatorName || "").trim();
     const creatorBio = String(exhibit.creatorBio || "").trim();
     return buildCreatorAnswer(creatorName, creatorBio);

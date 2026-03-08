@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" role="img" aria-label="Winery Exhibition Hero">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f6e8d3"/>
+      <stop offset="100%" stop-color="#e6d6bf"/>
+    </linearGradient>
+    <linearGradient id="hill1" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#7b5b3e"/>
+      <stop offset="100%" stop-color="#9a724d"/>
+    </linearGradient>
+    <linearGradient id="hill2" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#5a3c2f"/>
+      <stop offset="100%" stop-color="#7a4c3a"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <circle cx="1320" cy="170" r="90" fill="#f5c66b" opacity="0.9"/>
+  <path d="M0 560C180 510 300 500 470 530C640 560 780 620 930 610C1080 600 1280 530 1600 550V900H0Z" fill="url(#hill1)"/>
+  <path d="M0 640C220 590 380 600 520 650C700 710 850 760 1060 730C1240 705 1410 650 1600 670V900H0Z" fill="url(#hill2)"/>
+  <g stroke="#2f4a2a" stroke-width="8" opacity="0.42">
+    <path d="M140 900V640M220 900V620M300 900V610M380 900V600M460 900V610M540 900V620M620 900V640"/>
+    <path d="M800 900V660M880 900V640M960 900V630M1040 900V620M1120 900V635M1200 900V650M1280 900V670"/>
+  </g>
+  <text x="800" y="130" text-anchor="middle" font-family="Frank Ruhl Libre, serif" font-size="72" fill="#5f1b2b" font-weight="700">סדרת טעימות: הבציר הראשון</text>
+  <text x="800" y="190" text-anchor="middle" font-family="Noto Sans Hebrew, Arial, sans-serif" font-size="34" fill="#6b1f30">מסע מהכרם אל הכוס</text>
+</svg>

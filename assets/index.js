@@ -5,6 +5,12 @@ import { initGaReliability, trackGaError } from "./modules/gaTelemetry.js";
 
 (async () => {
   const params = new URLSearchParams(location.search);
+  const tenantParam = (params.get("tenant") || params.get("vertical") || "").trim().toLowerCase();
+  const host = String(location.hostname || "").toLowerCase();
+  const tenant = tenantParam || (host.includes("winery") ? "winery" : "museum");
+  const isWinery = tenant === "winery";
+  const exhibitWordSingular = isWinery ? "יין" : "מיצג";
+  const exhibitWordPlural = isWinery ? "יינות" : "מיצגים";
 
   // Tenant params
   const museumId = params.get("museum") || params.get("museumId") || null;
@@ -30,6 +36,7 @@ import { initGaReliability, trackGaError } from "./modules/gaTelemetry.js";
     q.set("id", exhibitKey);
 
     // Keep tenant context when navigating into exhibit page
+    if (tenant) q.set("tenant", tenant);
     if (museumId) q.set("museum", museumId);
     if (exhibitionId) q.set("exhibition", exhibitionId);
 
@@ -91,6 +98,20 @@ import { initGaReliability, trackGaError } from "./modules/gaTelemetry.js";
   const museumName = document.getElementById("museumName");
   const museumLogo = document.getElementById("museumLogo");
   const list = document.getElementById("list");
+  const dashboardSubLabelEl = document.querySelector(".brand .small");
+  const exhibitsSectionTitleEl = list?.previousElementSibling || null;
+  const usageBreakdownEl = document.getElementById("usageBreakdown");
+  const usageBreakdownSectionTitleEl = usageBreakdownEl?.previousElementSibling || null;
+
+  if (dashboardSubLabelEl && isWinery) {
+    dashboardSubLabelEl.textContent = "בחר/י יין לדוגמה";
+  }
+  if (exhibitsSectionTitleEl) {
+    exhibitsSectionTitleEl.textContent = exhibitWordPlural;
+  }
+  if (usageBreakdownSectionTitleEl) {
+    usageBreakdownSectionTitleEl.textContent = `התפלגות שימוש החודש לפי ${exhibitWordSingular}`;
+  }
 
   if (museumName) museumName.textContent = data.museum?.name || "מוזיאון";
   if (museumLogo) museumLogo.src = data.museum?.logo || "assets/logo.png";
@@ -208,7 +229,7 @@ import { initGaReliability, trackGaError } from "./modules/gaTelemetry.js";
     if (!container) return;
 
     if (!Array.isArray(items) || items.length === 0) {
-      container.innerHTML = `<div class="small">אין עדיין שימושים החודש לפי מיצגים.</div>`;
+      container.innerHTML = `<div class="small">אין עדיין שימושים החודש לפי ${exhibitWordPlural}.</div>`;
       return;
     }
 
@@ -227,7 +248,7 @@ import { initGaReliability, trackGaError } from "./modules/gaTelemetry.js";
 
     container.innerHTML = `
       <div class="usageHeader">
-        <div class="usageHeader__title">מיצג</div>
+        <div class="usageHeader__title">${exhibitWordSingular}</div>
         <div class="usageHeader__count">שאלות</div>
       </div>
       ${rows.join("")}
@@ -281,7 +302,7 @@ function renderAnalyticsInsights(container, report, map) {
 
     const kpis = [
       {
-        label: "צפיות במיצגים",
+        label: `צפיות ב${exhibitWordPlural}`,
         value: Number(totals.exhibitViewEvents || 0),
         sub: `sessions: ${Number(totals.exhibitViewSessions || 0)}`,
       },
@@ -339,7 +360,7 @@ function renderAnalyticsInsights(container, report, map) {
           )
           .join("")}
       </div>
-      <div class="insights-section-title">Top מיצגים לפי צפיות</div>
+      <div class="insights-section-title">Top ${exhibitWordPlural} לפי צפיות</div>
       <div class="insight-table">
         ${topRows || `<div class="small">אין נתוני צפיות בטווח שנבחר.</div>`}
       </div>

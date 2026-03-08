@@ -1,0 +1,19 @@
+﻿{
+  "defaultTenant": "museum",
+  "tenants": {
+    "museum": {
+      "themeCss": "/assets/styles.css",
+      "welcomeText": "שלום :) אפשר לשאול אותי שאלות על המיצג, או להשתמש בכפתורים למעלה לקבלת מידע מהיר. המדריך מופעל על ידי Game Factory.",
+      "chatTitle": "שאל/י על היצירה",
+      "creatorLabel": "יוצר/ת",
+      "gaMeasurementId": "G-Q6TTZPPY3H"
+    },
+    "winery": {
+      "themeCss": "/assets/themes/winery.css",
+      "welcomeText": "שלום :) אפשר לשאול אותי שאלות על היין, או להשתמש בכפתורים למעלה לקבלת מידע מהיר. המדריך מופעל על ידי Game Factory.",
+      "chatTitle": "שאל/י על היין",
+      "creatorLabel": "יינן/ית",
+      "gaMeasurementId": "G-CQCBKNQL4M"
+    }
+  }
+}

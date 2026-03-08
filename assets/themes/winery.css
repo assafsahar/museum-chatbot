@@ -1,0 +1,174 @@
+@import url("/assets/styles.css");
+
+:root {
+  --bg: #f8f3ec;
+  --card: #fffdf8;
+  --text: #1f140f;
+  --muted: #6a5a52;
+  --brand: #6b1f30;
+  --border: #d8c9bc;
+  --shadow: 0 12px 28px rgba(54, 26, 18, 0.12);
+}
+
+body {
+  --font: "Noto Sans Hebrew", "Segoe UI", Arial, sans-serif;
+  background:
+    linear-gradient(180deg, rgba(95, 27, 43, 0.05), transparent 280px),
+    radial-gradient(1200px 500px at 100% -10%, rgba(107, 31, 48, 0.12), transparent 62%),
+    radial-gradient(900px 420px at -10% 110%, rgba(200, 147, 58, 0.14), transparent 60%),
+    var(--bg);
+}
+
+.container {
+  width: min(1160px, calc(100% - 28px));
+  margin-top: 18px;
+}
+
+.topbar {
+  padding: 10px 12px;
+  border: 1px solid rgba(107, 31, 48, 0.2);
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 253, 248, 0.98), rgba(254, 244, 229, 0.98));
+  box-shadow: 0 10px 24px rgba(63, 34, 22, 0.08);
+}
+
+.brand .museum-name {
+  color: #5f1b2b;
+  font-size: 18px;
+}
+
+.small {
+  color: #7a6559;
+}
+
+.grid {
+  gap: 22px;
+  grid-template-columns: 1.12fr 0.88fr;
+}
+
+.card {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  box-shadow: 0 14px 36px rgba(61, 30, 20, 0.12);
+}
+
+.h1 {
+  color: #6b1f30;
+  font-family: "Frank Ruhl Libre", serif;
+  letter-spacing: -0.1px;
+  font-size: 44px;
+}
+
+.h2 {
+  border-bottom-color: rgba(107, 31, 48, 0.5);
+  color: #826a5f;
+}
+
+.section-title {
+  color: #6b1f30;
+  font-size: 16px;
+}
+
+.hero img {
+  border-radius: 10px;
+  border-color: rgba(107, 31, 48, 0.35);
+  background: #fff9ef;
+}
+
+.tagBtn {
+  background: #f8e9d4;
+  border-color: #d6b893;
+  color: #4e2c22;
+  font-weight: 700;
+}
+
+.tagBtn:hover {
+  background: #edd8bb;
+}
+
+.chat-header {
+  background: linear-gradient(90deg, #6b1f30, #2e1d18);
+  border-bottom: 1px solid rgba(255, 220, 174, 0.35);
+}
+
+#resetBtn {
+  border-color: rgba(255, 231, 201, 0.6);
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.msg.user {
+  background: #fcf4e8;
+  border-color: #e8cfad;
+}
+
+.msg {
+  border-radius: 16px;
+}
+
+.chat-log {
+  background: linear-gradient(180deg, #fffcf7, #faf4eb);
+}
+
+.chat-input textarea {
+  background: #fffcf7;
+  border-color: #dec7af;
+}
+
+#sendBtn {
+  background: linear-gradient(135deg, #6b1f30 0%, #8f2d45 100%);
+  border-radius: 14px;
+}
+
+#sendBtn:hover {
+  filter: brightness(1.08);
+}
+
+.powered-by {
+  color: #7f6b60;
+}
+
+@media (max-width: 900px) {
+  .topbar {
+    padding: 6px 8px;
+  }
+
+  .grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+  }
+
+  .grid > .card:first-child {
+    order: 1;
+  }
+
+  .chat-wrap {
+    order: 2;
+    height: auto;
+    min-height: 420px;
+  }
+
+  .content {
+    padding: 14px;
+  }
+
+  .container {
+    width: calc(100% - 20px);
+  }
+
+  .h1 {
+    font-size: 36px;
+  }
+
+  .h2 {
+    font-size: 24px;
+  }
+
+  .chat-header {
+    padding: 12px 14px;
+  }
+
+  .chat-input {
+    padding: 10px;
+    gap: 8px;
+  }
+}
