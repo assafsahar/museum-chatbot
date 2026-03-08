@@ -11,3 +11,4 @@ schema_public.sql
 seed_core.sql
 node_modules/
 .DS_Store
+tmp/
