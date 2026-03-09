@@ -1,0 +1,406 @@
+﻿<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>מחירון ליקבים | Game Factory</title>
+<link href="https://fonts.googleapis.com/css2?family=Frank+Ruhl+Libre:wght@400;700;900&family=Heebo:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --wine: #6b1f30;
+  --gold: #c8933a;
+  --cream: #faf5ec;
+  --cream-dk: #ede3d0;
+  --dark: #18110b;
+  --text: #000000;
+  --text-lt: #444444;
+  --white: #fefcf8;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Heebo', sans-serif;
+  background: linear-gradient(180deg, #fffdf9 0%, #f5f0e6 100%);
+  color: var(--text);
+  direction: rtl;
+  text-align: right;
+}
+a { color: inherit; }
+
+nav {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(254,252,248,0.94);
+  backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(0,0,0,0.08);
+}
+.nav-inner {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 12px 22px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 16px;
+}
+.nav-logo-img { height: 46px; width: auto; }
+.nav-links { display: flex; align-items: center; gap: 14px; }
+.nav-link {
+  text-decoration: none;
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 700;
+}
+.nav-link:hover { color: var(--wine); }
+.btn-wa {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  background: #25d366;
+  color: white;
+  border-radius: 8px;
+  padding: 9px 18px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.hero {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 56px 22px 26px;
+}
+.kicker {
+  color: var(--gold);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+  font-size: 12px;
+}
+h1 {
+  margin-top: 8px;
+  font-family: 'Frank Ruhl Libre', serif;
+  color: var(--wine);
+  font-size: clamp(34px, 5vw, 56px);
+  line-height: 1.1;
+}
+.hero p {
+  margin-top: 16px;
+  max-width: 760px;
+  font-size: 18px;
+  line-height: 1.7;
+  color: var(--text-lt);
+}
+.section-title {
+  margin: 24px 0 16px;
+}
+.section-title h2 {
+  font-family: 'Frank Ruhl Libre', serif;
+  color: var(--wine);
+  font-size: clamp(24px, 3vw, 36px);
+  line-height: 1.2;
+}
+
+.wrap {
+  max-width: 1120px;
+  margin: 0 auto;
+  padding: 20px 22px 60px;
+}
+.grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 20px;
+}
+.card {
+  background: var(--white);
+  border: 1px solid var(--cream-dk);
+  border-radius: 20px;
+  padding: 24px;
+  box-shadow: 0 12px 24px rgba(24,17,11,0.08);
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.plan {
+  font-weight: 700;
+  color: var(--wine);
+  font-size: 19px;
+}
+.price {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 44px;
+  color: var(--dark);
+  line-height: 1;
+}
+.cost-lines {
+  display: grid;
+  gap: 8px;
+}
+.cost-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  border-bottom: 1px dashed var(--cream-dk);
+  padding-bottom: 6px;
+}
+.cost-label {
+  font-size: 14px;
+  color: var(--text-lt);
+  font-weight: 600;
+}
+.cost-value {
+  font-family: 'Frank Ruhl Libre', serif;
+  font-size: 28px;
+  color: var(--dark);
+}
+.price small {
+  font-family: 'Heebo', sans-serif;
+  font-size: 15px;
+  color: var(--text-lt);
+  font-weight: 400;
+}
+.desc {
+  font-size: 15px;
+  color: var(--text-lt);
+  line-height: 1.6;
+  min-height: 54px;
+}
+.features {
+  list-style: none;
+  display: grid;
+  gap: 10px;
+  margin-top: 4px;
+}
+.features li {
+  font-size: 14px;
+  line-height: 1.5;
+  padding-right: 18px;
+  position: relative;
+}
+.features li::before {
+  content: "✓";
+  position: absolute;
+  right: 0;
+  top: 0;
+  color: var(--gold);
+  font-weight: 700;
+}
+.cta {
+  margin-top: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 12px 20px;
+  font-size: 14px;
+  font-weight: 700;
+  border: 1px solid var(--wine);
+  color: var(--wine);
+}
+.cta:hover {
+  background: var(--wine);
+  color: white;
+}
+.card.featured {
+  border-color: var(--wine);
+  background: linear-gradient(180deg, #fffaf2 0%, #fff 100%);
+  transform: translateY(-6px);
+}
+.badge {
+  align-self: flex-start;
+  background: var(--wine);
+  color: white;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 700;
+}
+
+.notes {
+  margin-top: 28px;
+  background: #fff;
+  border: 1px solid var(--cream-dk);
+  border-radius: 14px;
+  padding: 18px;
+}
+.notes h3 {
+  font-size: 16px;
+  margin-bottom: 10px;
+  color: var(--wine);
+}
+.notes p {
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--text-lt);
+}
+.setup-box {
+  background: #fff;
+  border: 1px solid var(--cream-dk);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.setup-header {
+  background: #f8f4ec;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--cream-dk);
+  font-weight: 700;
+  color: var(--wine);
+}
+.setup-content {
+  padding: 16px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+.setup-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+.setup-table td {
+  border-bottom: 1px solid #f0eadf;
+  padding: 10px 4px;
+  font-size: 15px;
+}
+.setup-table td:last-child {
+  text-align: left;
+  font-weight: 700;
+}
+.setup-details {
+  background: #fffaf2;
+  border-right: 4px solid var(--gold);
+  border-radius: 8px;
+  padding: 12px 14px;
+}
+.setup-details ul {
+  margin: 0;
+  padding-right: 18px;
+}
+.setup-details li {
+  margin-bottom: 8px;
+  font-size: 14px;
+  color: var(--text-lt);
+}
+.addons {
+  margin-top: 22px;
+  background: var(--dark);
+  color: #fff;
+  border-radius: 12px;
+  padding: 16px;
+  text-align: center;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+@media (max-width: 980px) {
+  .setup-content { grid-template-columns: 1fr; }
+  .grid { grid-template-columns: 1fr; }
+  .card.featured { transform: none; }
+}
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="nav-inner">
+    <img src="image_6.png" class="nav-logo-img" alt="Game Factory Logo">
+    <div class="nav-links">
+      <a class="nav-link" href="index.html">עמוד נחיתה</a>
+      <a class="btn-wa" href="https://wa.me/972523403206">בואו נדבר</a>
+    </div>
+  </div>
+</nav>
+
+<section class="hero">
+  <span class="kicker">PRICING FOR WINERIES</span>
+  <h1>מודל התקשרות ותמחור ליקבים</h1>
+  <p>
+    מודל פשוט וברור: הקמה והטמעה חד-פעמית, ולאחר מכן רישיון שימוש ותמיכה חודשיים.
+  </p>
+</section>
+
+<main class="wrap">
+  <section class="section-title">
+    <h2>1. הקמה והטמעה (חד-פעמי)</h2>
+  </section>
+
+  <section class="setup-box">
+    <div class="setup-header">מה כלול בחבילת ההקמה?</div>
+    <div class="setup-content">
+      <table class="setup-table">
+        <tr><td>עד 20 יינות</td><td>2,400 ₪</td></tr>
+        <tr><td>עד 50 יינות</td><td>4,200 ₪</td></tr>
+        <tr><td>עד 100 יינות</td><td>7,500 ₪</td></tr>
+      </table>
+      <div class="setup-details">
+        <ul>
+          <li>פתיחת יקב ותפריט יינות במערכת</li>
+          <li>הזנת תוכן ובניית עמודי יין</li>
+          <li>הפקת קודי QR לכל יין</li>
+          <li>בדיקות יציבות ודיוק (QA)</li>
+          <li>הדרכת צוות קצרה + דשבורד בסיסי</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="section-title" style="margin-top:30px;">
+    <h2>2. רישיון שירות ותמיכה (חודשי)</h2>
+  </section>
+
+  <section class="grid">
+    <article class="card">
+      <div class="plan">START</div>
+      <div class="price">390 <small>₪ / חודש</small></div>
+      <p class="desc">מסלול בסיסי ליקבים קטנים ובינוניים.</p>
+      <ul class="features">
+        <li>עד 1,000 שאלות בחודש</li>
+        <li>דשבורד שימוש בסיסי</li>
+        <li>תמיכה טכנית זמינה</li>
+      </ul>
+      <a class="cta" href="https://wa.me/972523403206">לשיחה קצרה</a>
+    </article>
+
+    <article class="card featured">
+      <span class="badge">מומלץ</span>
+      <div class="plan">STANDARD</div>
+      <div class="price">590 <small>₪ / חודש</small></div>
+      <p class="desc">המסלול הנבחר ביותר עבור יקב פעיל.</p>
+      <ul class="features">
+        <li>עד 2,000 שאלות בחודש</li>
+        <li>תעדוף בתמיכה טכנית</li>
+        <li>דוחות שימוש חודשיים</li>
+        <li>זמינות ב-WhatsApp וטלפון</li>
+      </ul>
+      <a class="cta" href="https://wa.me/972523403206">לתיאום שיחה</a>
+    </article>
+
+    <article class="card">
+      <div class="plan">PRO</div>
+      <div class="price">990 <small>₪ / חודש</small></div>
+      <p class="desc">ליקב עם פעילות גבוהה ותמיכה מועדפת.</p>
+      <ul class="features">
+        <li>עד 5,000 שאלות בחודש</li>
+        <li>התחייבות למענה תוך 4 שעות עסקים</li>
+        <li>שיחת סטטוס חודשית קצרה</li>
+        <li>ליווי אישי מול גורם מקצועי</li>
+      </ul>
+      <a class="cta" href="https://wa.me/972523403206">לקבלת פרטים</a>
+    </article>
+  </section>
+
+  <section class="addons">
+    <strong>הרחבות שימוש:</strong><br>
+    תוספת 1,000 שאלות: 290 ₪ | תוספת 5,000 שאלות: 990 ₪
+  </section>
+
+  <section class="notes">
+    <h3>הערות מחיר</h3>
+    <p>
+      המחירים אינם כוללים מע"מ. הפקת צילומים מקצועיים, תרגום לשפות נוספות והטמעת חומרה ייעודית מתומחרים בנפרד לפי היקף.
+      גיים פקטורי 2026.
+    </p>
+  </section>
+</main>
+
+</body>
+</html>
