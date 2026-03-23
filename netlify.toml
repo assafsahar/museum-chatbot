@@ -2,14 +2,20 @@
   publish = "."
   functions = "netlify/functions"
 
+[functions."supabase-keepalive"]
+  schedule = "@daily"
+
 [context.production.environment]
   APP_ENV = "production"
   ALLOW_USAGE_WRITE = "true"
+  SUPABASE_KEEPALIVE_ENABLED = "true"
 
 [context.deploy-preview.environment]
   APP_ENV = "staging"
   ALLOW_USAGE_WRITE = "false"
+  SUPABASE_KEEPALIVE_ENABLED = "false"
 
 [context.branch-deploy.environment]
   APP_ENV = "staging"
   ALLOW_USAGE_WRITE = "false"
+  SUPABASE_KEEPALIVE_ENABLED = "false"
