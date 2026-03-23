@@ -197,6 +197,7 @@ Key checks:
 - `APP_ENV=production`
 - production `SUPABASE_URL`
 - production `SUPABASE_SERVICE_ROLE_KEY`
+- `SUPABASE_KEEPALIVE_ENABLED=true` in Netlify UI for `Functions` runtime
 
 ### Staging Contexts
 
@@ -209,6 +210,39 @@ Recommended values:
 
 - `APP_ENV=staging`
 - `ALLOW_USAGE_WRITE=true` (for realistic testing)
+
+## Production Keepalive (Free Tier Workaround)
+
+The project includes a scheduled function:
+
+- `supabase-keepalive`
+
+Purpose:
+
+- keep the production Supabase project active during a free-tier pilot
+- run one tiny read query per day
+
+Important:
+
+- the schedule is defined in `netlify.toml`
+- the runtime flag must be set in Netlify UI, not only in `netlify.toml`
+
+Required Netlify UI variable:
+
+- `SUPABASE_KEEPALIVE_ENABLED=true`
+
+Recommended scope:
+
+- `Production`
+- available to `Functions`
+
+How to verify:
+
+1. Deploy `main`
+2. Open Netlify `Functions`
+3. Confirm `supabase-keepalive` is marked `Scheduled`
+4. Use `Run now`
+5. Confirm logs contain `supabase-keepalive ok`
 
 ## Troubleshooting
 
