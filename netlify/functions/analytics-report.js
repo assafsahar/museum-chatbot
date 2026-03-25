@@ -130,6 +130,7 @@ exports.handler = async (event) => {
     let source = "daily_aggregates";
     let byDay = [];
     let topExhibits = [];
+    let topMap = new Map();
     let totals = {
       appOpenSessions: 0,
       exhibitViewEvents: 0,
@@ -202,7 +203,7 @@ exports.handler = async (event) => {
         totals.audioPlayClicks += Number(row.audio_play_clicks || 0);
       }
 
-      const topMap = new Map();
+      topMap = new Map();
       for (const row of rollupRows) {
         const key = String(row.exhibit_id || "unknown");
         const prev = topMap.get(key) || 0;
