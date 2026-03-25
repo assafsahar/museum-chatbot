@@ -75,6 +75,19 @@ function normalizeRawEventDay(createdAt) {
   return fmtDateUtc(d);
 }
 
+function isMissingAnalyticsAggregate(err) {
+  const message = String(err?.message || "").toLowerCase();
+  const code = String(err?.code || "").toLowerCase();
+  return (
+    code === "42p01" ||
+    code === "42883" ||
+    message.includes("does not exist") ||
+    message.includes("could not find") ||
+    message.includes("relation") ||
+    message.includes("function analytics_rollup_for_day")
+  );
+}
+
 exports.handler = async (event) => {
   const origin = event.headers?.origin || "*";
 
@@ -114,6 +127,24 @@ exports.handler = async (event) => {
       // Ignore: function may not exist yet in some environments.
     }
 
+    let source = "daily_aggregates";
+    let byDay = [];
+    let topExhibits = [];
+    let totals = {
+      appOpenSessions: 0,
+      exhibitViewEvents: 0,
+      exhibitViewSessions: 0,
+      quickQuestionClicks: 0,
+      freeQuestionSubmits: 0,
+      chatAnswers: 0,
+      videoPlayClicks: 0,
+      audioPlayClicks: 0,
+    };
+
+    let aggregateUnavailable = false;
+    let funnelRows = [];
+    let rollupRows = [];
+
     let funnelQuery = supabase
       .from("analytics_daily_funnel")
       .select(
@@ -126,64 +157,68 @@ exports.handler = async (event) => {
     if (museumId) funnelQuery = funnelQuery.eq("museum_id", museumId);
     if (exhibitionId) funnelQuery = funnelQuery.eq("exhibition_id", exhibitionId);
 
-    const { data: funnelRows, error: funnelError } = await funnelQuery;
+    const { data: funnelData, error: funnelError } = await funnelQuery;
     if (funnelError) {
-      return json(500, { error: "funnel_query_failed", details: funnelError.message }, origin);
+      if (isMissingAnalyticsAggregate(funnelError)) {
+        aggregateUnavailable = true;
+      } else {
+        return json(500, { error: "funnel_query_failed", details: funnelError.message }, origin);
+      }
+    } else {
+      funnelRows = funnelData || [];
     }
 
-    let topExhibitsQuery = supabase
-      .from("analytics_daily_rollup")
-      .select("exhibit_id,events_count")
-      .eq("event_name", "exhibit_view")
-      .gte("day", from)
-      .lte("day", to);
+    if (!aggregateUnavailable) {
+      let topExhibitsQuery = supabase
+        .from("analytics_daily_rollup")
+        .select("exhibit_id,events_count")
+        .eq("event_name", "exhibit_view")
+        .gte("day", from)
+        .lte("day", to);
 
-    if (museumId) topExhibitsQuery = topExhibitsQuery.eq("museum_id", museumId);
-    if (exhibitionId) topExhibitsQuery = topExhibitsQuery.eq("exhibition_id", exhibitionId);
+      if (museumId) topExhibitsQuery = topExhibitsQuery.eq("museum_id", museumId);
+      if (exhibitionId) topExhibitsQuery = topExhibitsQuery.eq("exhibition_id", exhibitionId);
 
-    const { data: rollupRows, error: rollupError } = await topExhibitsQuery;
-    if (rollupError) {
-      return json(500, { error: "rollup_query_failed", details: rollupError.message }, origin);
+      const { data: rollupData, error: rollupError } = await topExhibitsQuery;
+      if (rollupError) {
+        if (isMissingAnalyticsAggregate(rollupError)) {
+          aggregateUnavailable = true;
+        } else {
+          return json(500, { error: "rollup_query_failed", details: rollupError.message }, origin);
+        }
+      } else {
+        rollupRows = rollupData || [];
+      }
     }
 
-    let totals = {
-      appOpenSessions: 0,
-      exhibitViewEvents: 0,
-      exhibitViewSessions: 0,
-      quickQuestionClicks: 0,
-      freeQuestionSubmits: 0,
-      chatAnswers: 0,
-      videoPlayClicks: 0,
-      audioPlayClicks: 0,
-    };
+    if (!aggregateUnavailable) {
+      for (const row of funnelRows) {
+        totals.appOpenSessions += Number(row.app_open_sessions || 0);
+        totals.exhibitViewSessions += Number(row.exhibit_view_sessions || 0);
+        totals.quickQuestionClicks += Number(row.quick_question_clicks || 0);
+        totals.freeQuestionSubmits += Number(row.free_question_submits || 0);
+        totals.chatAnswers += Number(row.chat_answers || 0);
+        totals.videoPlayClicks += Number(row.video_play_clicks || 0);
+        totals.audioPlayClicks += Number(row.audio_play_clicks || 0);
+      }
 
-    for (const row of funnelRows || []) {
-      totals.appOpenSessions += Number(row.app_open_sessions || 0);
-      totals.exhibitViewSessions += Number(row.exhibit_view_sessions || 0);
-      totals.quickQuestionClicks += Number(row.quick_question_clicks || 0);
-      totals.freeQuestionSubmits += Number(row.free_question_submits || 0);
-      totals.chatAnswers += Number(row.chat_answers || 0);
-      totals.videoPlayClicks += Number(row.video_play_clicks || 0);
-      totals.audioPlayClicks += Number(row.audio_play_clicks || 0);
+      const topMap = new Map();
+      for (const row of rollupRows) {
+        const key = String(row.exhibit_id || "unknown");
+        const prev = topMap.get(key) || 0;
+        topMap.set(key, prev + Number(row.events_count || 0));
+      }
+      totals.exhibitViewEvents = Array.from(topMap.values()).reduce((a, b) => a + Number(b || 0), 0);
+      topExhibits = Array.from(topMap.entries())
+        .map(([exhibitId, exhibitViews]) => ({ exhibitId, exhibitViews }))
+        .sort((a, b) => b.exhibitViews - a.exhibitViews)
+        .slice(0, 10);
+
+      byDay = funnelRows;
     }
-
-    let topMap = new Map();
-    for (const row of rollupRows || []) {
-      const key = String(row.exhibit_id || "unknown");
-      const prev = topMap.get(key) || 0;
-      topMap.set(key, prev + Number(row.events_count || 0));
-    }
-    totals.exhibitViewEvents = Array.from(topMap.values()).reduce((a, b) => a + Number(b || 0), 0);
-    let topExhibits = Array.from(topMap.entries())
-      .map(([exhibitId, exhibitViews]) => ({ exhibitId, exhibitViews }))
-      .sort((a, b) => b.exhibitViews - a.exhibitViews)
-      .slice(0, 10);
-
-    let byDay = funnelRows || [];
-    let source = "daily_aggregates";
 
     // Fallback to raw events if daily aggregates are empty/stale.
-    if (!byDay.length || isAllZeroTotals(totals)) {
+    if (aggregateUnavailable || !byDay.length || isAllZeroTotals(totals)) {
       const fromTs = `${from}T00:00:00.000Z`;
       const toTs = `${to}T23:59:59.999Z`;
 
@@ -202,7 +237,7 @@ exports.handler = async (event) => {
       }
 
       if (Array.isArray(rawRows) && rawRows.length) {
-        source = "raw_fallback";
+        source = aggregateUnavailable ? "raw_missing_aggregates_fallback" : "raw_fallback";
         totals = {
           appOpenSessions: 0,
           exhibitViewEvents: 0,
