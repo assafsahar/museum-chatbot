@@ -124,7 +124,8 @@ export function createChatClient({
     rowEl.appendChild(controls);
   }
 
-  function appendMessage(role, text) {
+  function appendMessage(role, text, options = {}) {
+    const { keepInputVisible = false } = options;
     const row = document.createElement("div");
     row.className = `msg ${role}`;
 
@@ -147,7 +148,9 @@ export function createChatClient({
     els.chatLog.appendChild(row);
 
     scrollToBottom();
-    ensureInputVisibleOnMobile(els.q);
+    if (keepInputVisible) {
+      ensureInputVisibleOnMobile(els.q);
+    }
 
     return row;
   }
@@ -240,13 +243,13 @@ export function createChatClient({
     if (!q) return;
 
     els.q.value = "";
-    appendMessage("user", q);
+    appendMessage("user", q, { keepInputVisible: true });
     if (typeof onAnalyticsEvent === "function") {
       onAnalyticsEvent("chat_send_click", { questionLength: q.length });
       onAnalyticsEvent("free_question_submit", { questionLength: q.length });
     }
 
-    const pending = appendMessage("assistant", "רגע…");
+    const pending = appendMessage("assistant", "רגע…", { keepInputVisible: true });
     const { answer, quotaWarning, debug } = await ask(q);
 
     const bubble = pending.querySelector(".bubble");
@@ -266,7 +269,7 @@ export function createChatClient({
         extra.push(`${quotaWarning.percentUsed}% נוצל`);
       }
       const suffix = extra.length ? ` (${extra.join(" · ")})` : "";
-      appendMessage("assistant", `${quotaWarning.message}${suffix}`);
+      appendMessage("assistant", `${quotaWarning.message}${suffix}`, { keepInputVisible: true });
     }
 
     if (typeof onAnalyticsEvent === "function") {
@@ -283,7 +286,7 @@ export function createChatClient({
   function onReset() {
     stopSpeaking();
     els.chatLog.innerHTML = "";
-    appendMessage("assistant", "איפסתי 🙂 אפשר לשאול שוב, או להשתמש בכפתורים למעלה.");
+    appendMessage("assistant", "איפסתי 🙂 אפשר לשאול שוב, או להשתמש בכפתורים למעלה.", { keepInputVisible: true });
   }
 
   return {
